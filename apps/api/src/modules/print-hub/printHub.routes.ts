@@ -1,4 +1,4 @@
-import { Router, Response, NextFunction } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { authenticate, AuthRequest } from '../../middleware/auth.middleware';
@@ -6,6 +6,107 @@ import { requireMinRole } from '../../middleware/rbac.middleware';
 import * as svc from './printHub.service';
 
 const router = Router();
+
+// ─── PUBLIC WHATSAPP WEBHOOKS (No JWT Authentication) ──────────────────────────
+
+// 1. Meta Cloud API Webhook Verification Challenge
+router.get('/whatsapp/webhook', (req: Request, res: Response) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'SVV_WHATSAPP_TOKEN';
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+      console.log('✅ [Meta Webhook] Webhook verified successfully!');
+      return res.status(200).send(challenge);
+    }
+    return res.status(403).json({ error: 'Verification token mismatch' });
+  }
+  res.status(400).json({ error: 'Invalid verification request' });
+});
+
+// 2. Meta Cloud API Incoming Messages Webhook
+router.post('/whatsapp/webhook', async (req: Request, res: Response) => {
+  try {
+    const body = req.body;
+    if (body.object === 'whatsapp_business_account' || body.entry) {
+      for (const entry of body.entry || []) {
+        for (const change of entry.changes || []) {
+          const value = change.value;
+          if (value && value.messages) {
+            for (const msg of value.messages) {
+              const fromPhone = msg.from;
+              const contact = value.contacts?.find((c: any) => c.wa_id === fromPhone);
+              const senderName = contact?.profile?.name || msg.pushName || '';
+
+              let messageBody = '';
+              let mediaUrl: string | null = null;
+              let mediaType: string | null = null;
+              let fileName: string | null = null;
+
+              if (msg.type === 'text') {
+                messageBody = msg.text?.body || '';
+              } else if (msg.type === 'image') {
+                mediaType = 'IMAGE';
+                mediaUrl = msg.image?.link || msg.image?.url || `/uploads/whatsapp/${msg.id}.jpg`;
+                fileName = `Image_${msg.id}.jpg`;
+                messageBody = msg.image?.caption || `Please print photo: ${fileName}`;
+              } else if (msg.type === 'document') {
+                mediaType = 'PDF';
+                mediaUrl = msg.document?.link || msg.document?.url || `/uploads/whatsapp/${msg.id}.pdf`;
+                fileName = msg.document?.filename || `Document_${msg.id}.pdf`;
+                messageBody = msg.document?.caption || `Please print document: ${fileName}`;
+              }
+
+              await svc.processIncomingWhatsAppMessage({
+                phone: fromPhone,
+                senderName,
+                messageBody,
+                mediaUrl,
+                mediaType,
+                fileName,
+              });
+            }
+          }
+        }
+      }
+    }
+    res.status(200).json({ status: 'ok', received: true });
+  } catch (err: any) {
+    console.error('Error handling Meta WhatsApp Webhook:', err);
+    res.status(200).json({ status: 'error', message: err.message });
+  }
+});
+
+// 3. Public Direct Incoming WhatsApp Message Receiver (For Baileys / Gateways / Testing)
+router.post('/whatsapp/incoming', async (req: Request, res: Response) => {
+  try {
+    const { phone, senderName, messageBody, mediaUrl, mediaType, fileName, branchId, orgId } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'phone is required' });
+    }
+
+    const result = await svc.processIncomingWhatsAppMessage({
+      orgId,
+      branchId,
+      phone,
+      senderName,
+      messageBody,
+      mediaUrl,
+      mediaType,
+      fileName,
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('Error in /whatsapp/incoming:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── AUTHENTICATED ROUTES (Requires JWT) ───────────────────────────────────────
 router.use(authenticate);
 
 // Orders

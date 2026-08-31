@@ -238,6 +238,184 @@ export async function getWhatsAppInbox(orgId: string, branchId?: string) {
   return messages;
 }
 
+export async function processIncomingWhatsAppMessage(params: {
+  orgId?: string;
+  branchId?: string;
+  phone: string;
+  senderName?: string;
+  messageBody?: string;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  fileName?: string | null;
+}) {
+  const orgId = params.orgId || 'svv-org-001';
+  let branchId = params.branchId;
+
+  // Resolve default branch if not passed
+  if (!branchId) {
+    const firstBranch = await prisma.branch.findFirst({ where: { organizationId: orgId } });
+    branchId = firstBranch?.id || 'f5abaacc-d2b6-4591-91fb-314b2188e18c';
+  }
+
+  // Format phone number
+  const digits = params.phone.replace(/[^0-9]/g, '');
+  let formattedPhone = params.phone;
+  if (digits.length === 10) formattedPhone = `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  else if (digits.startsWith('91') && digits.length === 12) formattedPhone = `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+
+  // Determine priority customer name:
+  // 1. WhatsApp profile name / pushName
+  // 2. Saved contact name
+  // 3. Formatted mobile number
+  // 4. Walk-in Customer
+  let customerName = (params.senderName || '').trim();
+  if (!customerName || customerName.includes('Print Desk') || customerName.includes('SVV Communication') || customerName === 'Walk-in Customer' || customerName === 'Test Walk-in Customer') {
+    customerName = formattedPhone || 'Walk-in Customer';
+  }
+
+  let docName = params.fileName || 'Customer_Document.pdf';
+  if (params.mediaUrl && !params.fileName) {
+    const cleanUrl = params.mediaUrl.split('/').pop() || '';
+    if (cleanUrl.includes('_')) docName = cleanUrl.slice(cleanUrl.indexOf('_') + 1);
+    else docName = cleanUrl || (params.mediaType === 'IMAGE' ? 'Photo.jpg' : 'Document.pdf');
+  }
+
+  const messageText = params.messageBody || (params.mediaUrl ? `Please print ${docName}` : 'Hello');
+
+  // Save incoming message in database
+  const incomingMsg = await prisma.whatsAppMessage.create({
+    data: {
+      organizationId: orgId,
+      branchId,
+      phone: formattedPhone,
+      senderName: customerName,
+      messageBody: messageText,
+      mediaUrl: params.mediaUrl || null,
+      mediaType: params.mediaType || (params.mediaUrl?.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMAGE'),
+      isIncoming: true,
+      isBotHandled: true,
+    },
+  });
+
+  let createdOrder: any = null;
+  let autoReplyText = '';
+  const now = new Date();
+  const receivedTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+  // If a document/image was sent, group into existing token or generate new token!
+  if (params.mediaUrl) {
+    const isPVC = messageText.toLowerCase().includes('pvc') || messageText.toLowerCase().includes('card');
+    const isPhoto = messageText.toLowerCase().includes('photo') || messageText.toLowerCase().includes('passport');
+    const defaultPrice = isPVC ? 100 : (isPhoto ? 50 : 20);
+    const rawDigits10 = digits.slice(-10);
+
+    // 1. Check if customer already has an active order today (grouping by 10-digit phone)
+    const activeOrdersList = await prisma.printOrder.findMany({
+      where: {
+        organizationId: orgId,
+        branchId,
+        status: { in: ['PENDING', 'PRINTING', 'READY_FOR_DELIVERY'] },
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const existingActiveOrder = activeOrdersList.find((ord) => {
+      const ordDigits = (ord.customerPhone || '').replace(/[^0-9]/g, '');
+      return ordDigits.slice(-10) === rawDigits10;
+    });
+
+    if (existingActiveOrder) {
+      // Append file to existing customer token
+      const updatedDocName = existingActiveOrder.documentName
+        ? `${existingActiveOrder.documentName}, ${docName}`
+        : docName;
+
+      createdOrder = await prisma.printOrder.update({
+        where: { id: existingActiveOrder.id },
+        data: {
+          documentName: updatedDocName,
+          pageCount: (existingActiveOrder.pageCount || 1) + 1,
+          totalAmount: (existingActiveOrder.totalAmount || 0) + defaultPrice,
+        },
+      });
+
+      autoReplyText = `Your document received successfully.\nToken No: ${existingActiveOrder.tokenNumber}\nReceived Time: ${receivedTime}`;
+    } else {
+      // Generate new sequential token
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const countToday = await prisma.printOrder.count({
+        where: {
+          organizationId: orgId,
+          createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
+      });
+
+      const tokenNumber = `T-${100 + (countToday % 900) + 1}`;
+      const orderNo = `PRN-${dateStr}-${String(countToday + 1).padStart(3, '0')}`;
+
+      createdOrder = await prisma.printOrder.create({
+        data: {
+          organizationId: orgId,
+          branchId,
+          orderNo,
+          tokenNumber,
+          customerName,
+          customerPhone: formattedPhone,
+          source: 'WHATSAPP',
+          documentUrl: params.mediaUrl,
+          documentName: docName,
+          pageCount: 1,
+          copies: 1,
+          colorMode: isPVC || isPhoto ? 'COLOR' : 'BW',
+          paperSize: isPVC ? 'PVC Plastic' : (isPhoto ? 'Glossy Photo' : 'A4'),
+          totalAmount: defaultPrice,
+          status: 'PENDING',
+          notes: messageText,
+        },
+      });
+
+      autoReplyText = `Your document received successfully.\nToken No: ${tokenNumber}\nReceived Time: ${receivedTime}`;
+    }
+
+    // Link message to order
+    if (createdOrder) {
+      await prisma.whatsAppMessage.update({
+        where: { id: incomingMsg.id },
+        data: { orderId: createdOrder.id },
+      });
+    }
+
+    // Send automated WhatsApp acknowledgement to customer
+    if (autoReplyText) {
+      try {
+        await sendOutboundWhatsAppMessage(branchId, formattedPhone, autoReplyText);
+      } catch (e) {
+        console.warn('Socket outbound reply skipped:', e);
+      }
+
+      await prisma.whatsAppMessage.create({
+        data: {
+          organizationId: orgId,
+          branchId,
+          phone: formattedPhone,
+          senderName: 'SVV Print Desk',
+          messageBody: autoReplyText,
+          isIncoming: false,
+          isBotHandled: true,
+          orderId: createdOrder?.id || null,
+        },
+      });
+    }
+  }
+
+  return {
+    incomingMessage: incomingMsg,
+    order: createdOrder,
+    autoReplySent: autoReplyText,
+  };
+}
+
 export async function createWhatsAppMessage(orgId: string, data: {
   branchId: string;
   phone: string;
@@ -247,43 +425,15 @@ export async function createWhatsAppMessage(orgId: string, data: {
   mediaType?: string;
 }) {
   await ensurePluginActive(orgId);
-
-  const msg = await prisma.whatsAppMessage.create({
-    data: {
-      organizationId: orgId,
-      branchId: data.branchId,
-      phone: data.phone,
-      senderName: data.senderName,
-      messageBody: data.messageBody,
-      mediaUrl: data.mediaUrl,
-      mediaType: data.mediaType,
-      isIncoming: true,
-      isBotHandled: true,
-    },
+  return processIncomingWhatsAppMessage({
+    orgId,
+    branchId: data.branchId,
+    phone: data.phone,
+    senderName: data.senderName,
+    messageBody: data.messageBody,
+    mediaUrl: data.mediaUrl,
+    mediaType: data.mediaType,
   });
-
-  // If document was attached, automatically create print job
-  if (data.mediaUrl) {
-    const docName = data.messageBody.includes('.') ? data.messageBody : 'WhatsApp_Document.pdf';
-    const order = await createPrintOrder(orgId, {
-      branchId: data.branchId,
-      customerName: data.senderName,
-      customerPhone: data.phone,
-      source: 'WHATSAPP',
-      documentUrl: data.mediaUrl,
-      documentName: docName,
-      pageCount: 2,
-      colorMode: 'BW',
-      copies: 1,
-    });
-
-    await prisma.whatsAppMessage.update({
-      where: { id: msg.id },
-      data: { orderId: order.id },
-    });
-  }
-
-  return msg;
 }
 
 export async function sendStaffDirectChatMessage(orgId: string, data: {

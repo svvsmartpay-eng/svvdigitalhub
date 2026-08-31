@@ -273,128 +273,21 @@ export async function startBranchWhatsAppSession(orgId: string, branchId: string
         messageBody = 'Attachment received';
       }
 
-      // Save WhatsApp Message to Database
+      // Process incoming WhatsApp message & auto-create or group print tokens
       try {
-        const savedMsg = await prisma.whatsAppMessage.create({
-          data: {
-            organizationId: orgId,
-            branchId,
-            phone: customerPhone,
-            senderName: customerName,
-            messageBody,
-            mediaUrl,
-            mediaType,
-            isIncoming: true,
-            isBotHandled: true,
-          },
+        const { processIncomingWhatsAppMessage } = await import('./printHub.service');
+        const processed = await processIncomingWhatsAppMessage({
+          orgId,
+          branchId,
+          phone: customerPhone,
+          senderName: customerName,
+          messageBody,
+          mediaUrl,
+          mediaType,
+          fileName: docName,
         });
 
-        // If a document or photo was attached, group into existing active ticket or queue new order!
-        if (mediaUrl) {
-          const isPVC = messageBody.toLowerCase().includes('pvc') || messageBody.toLowerCase().includes('card');
-          const isPhoto = messageBody.toLowerCase().includes('photo') || messageBody.toLowerCase().includes('passport');
-          const defaultPrice = isPVC ? 100 : (isPhoto ? 50 : 20);
-
-          // 1. Check if customer already has an active pending/printing ticket in last 3 hours
-          const existingActiveOrder = await prisma.printOrder.findFirst({
-            where: {
-              organizationId: orgId,
-              branchId,
-              customerPhone,
-              status: { in: ['PENDING', 'PRINTING'] },
-              createdAt: { gte: new Date(Date.now() - 3 * 60 * 60 * 1000) },
-            },
-            orderBy: { createdAt: 'desc' },
-          });
-
-          if (existingActiveOrder) {
-            // Append file to existing customer ticket
-            const updatedDocName = existingActiveOrder.documentName
-              ? `${existingActiveOrder.documentName}, ${docName}`
-              : docName;
-            const updatedNotes = existingActiveOrder.notes
-              ? `${existingActiveOrder.notes}\n${messageBody}`
-              : messageBody;
-
-            await prisma.printOrder.update({
-              where: { id: existingActiveOrder.id },
-              data: {
-                documentName: updatedDocName,
-                notes: updatedNotes,
-                pageCount: (existingActiveOrder.pageCount || 1) + 1,
-                totalAmount: (existingActiveOrder.totalAmount || 0) + defaultPrice,
-              },
-            });
-
-            const autoReplyText = `✅ Added to Token: ${existingActiveOrder.tokenNumber}\nFile: ${docName}`;
-            await sendOutboundWhatsAppMessage(branchId, customerPhone, autoReplyText);
-
-            await prisma.whatsAppMessage.create({
-              data: {
-                organizationId: orgId,
-                branchId,
-                phone: customerPhone,
-                senderName: 'SVV Print Desk',
-                messageBody: autoReplyText,
-                isIncoming: false,
-                isBotHandled: true,
-              },
-            });
-
-            console.log(`✨ [WhatsApp Gateway] Appended ${docName} to existing Token ${existingActiveOrder.tokenNumber} for ${customerName}`);
-          } else {
-            // Create brand new ticket
-            const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-            const countToday = await prisma.printOrder.count({
-              where: {
-                organizationId: orgId,
-                createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-              },
-            });
-
-            const tokenNumber = `T-${100 + (countToday % 900) + 1}`;
-            const orderNo = `PRN-${dateStr}-${String(countToday + 1).padStart(3, '0')}`;
-
-            const order = await prisma.printOrder.create({
-              data: {
-                organizationId: orgId,
-                branchId,
-                orderNo,
-                tokenNumber,
-                customerName,
-                customerPhone,
-                source: 'WHATSAPP',
-                documentUrl: mediaUrl,
-                documentName: docName,
-                pageCount: 1,
-                copies: 1,
-                colorMode: isPVC || isPhoto ? 'COLOR' : 'BW',
-                paperSize: isPVC ? 'PVC Plastic' : (isPhoto ? 'Glossy Photo' : 'A4'),
-                totalAmount: defaultPrice,
-                status: 'PENDING',
-                notes: messageBody,
-              },
-            });
-
-            // Send automated Token reply to customer's WhatsApp (Ultra Short)
-            const autoReplyText = `✅ Received\nToken: ${tokenNumber}`;
-            await sendOutboundWhatsAppMessage(branchId, customerPhone, autoReplyText);
-
-            await prisma.whatsAppMessage.create({
-              data: {
-                organizationId: orgId,
-                branchId,
-                phone: customerPhone,
-                senderName: 'SVV Print Desk',
-                messageBody: autoReplyText,
-                isIncoming: false,
-                isBotHandled: true,
-              },
-            });
-
-            console.log(`✨ [WhatsApp Gateway] Print order created for ${customerName} with Token: ${tokenNumber}`);
-          }
-        }
+        console.log(`✨ [WhatsApp Gateway] Message processed for ${customerName} (${customerPhone}). Auto-Reply: "${processed.autoReplySent?.replace(/\n/g, ' ')}"`);
       } catch (err) {
         console.error('Error handling incoming WhatsApp message in DB', err);
       }
