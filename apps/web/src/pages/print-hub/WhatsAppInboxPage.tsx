@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useWhatsAppInbox, useCreatePrintOrder, useUpdatePrintOrderStatus, usePrintOrders } from '@/api/printHub.api';
+import { useWhatsAppInbox, useCreatePrintOrder, useUpdatePrintOrderStatus, usePrintOrders, usePrintHubRealtimeSync } from '@/api/printHub.api';
 import { useBranches } from '@/api/branches.api';
 import { useCurrentUser } from '@/api/auth.api';
 import { Button } from '@/components/ui/button';
@@ -57,6 +57,7 @@ export interface QuadCorners {
 }
 
 export default function WhatsAppInboxPage() {
+  usePrintHubRealtimeSync();
   const { data: currentUser } = useCurrentUser();
   const operatorName = currentUser?.name || 'Staff User 1';
 

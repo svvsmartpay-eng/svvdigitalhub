@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { usePrintOrders, useUpdatePrintOrderStatus, useCreatePrintOrder, useWhatsAppInbox } from '@/api/printHub.api';
+import { usePrintOrders, useUpdatePrintOrderStatus, useCreatePrintOrder, useWhatsAppInbox, usePrintHubRealtimeSync } from '@/api/printHub.api';
 import { useBranches } from '@/api/branches.api';
 import { useCurrentUser } from '@/api/auth.api';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,7 @@ const SAMPLE_DOCS = [
 ];
 
 export default function PrintQueuePage() {
+  usePrintHubRealtimeSync();
   const { data: currentUser } = useCurrentUser();
   const { data: branches } = useBranches();
   const [selectedBranch, setSelectedBranch] = useState('Isnapur');

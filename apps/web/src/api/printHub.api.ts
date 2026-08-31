@@ -1,6 +1,37 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
+
+export function usePrintHubRealtimeSync() {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('print_hub_realtime_stream')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'print_orders' },
+        () => {
+          qc.invalidateQueries({ queryKey: ['print-orders'] });
+          qc.invalidateQueries({ queryKey: ['print-tokens'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'whatsapp_messages' },
+        () => {
+          qc.invalidateQueries({ queryKey: ['whatsapp-inbox'] });
+          qc.invalidateQueries({ queryKey: ['whatsapp-chat'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc]);
+}
 
 const FALLBACK_ORDERS = [
   {
