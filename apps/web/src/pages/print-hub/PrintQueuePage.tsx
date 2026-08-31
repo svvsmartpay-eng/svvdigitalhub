@@ -100,6 +100,18 @@ export default function PrintQueuePage() {
     }, 2000);
   };
 
+  const formatDisplayPhone = (raw: string): string => {
+    if (!raw) return '';
+    const digits = raw.replace(/[^0-9]/g, '');
+    if (digits.startsWith('91') && digits.length === 12) {
+      return `+91 ${digits.slice(2, 7)} ${digits.slice(7)}`;
+    }
+    if (digits.length === 10) {
+      return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+    }
+    return raw.startsWith('+') ? raw : `+${raw}`;
+  };
+
   const cleanPhoneForWhatsApp = (raw: string): string => {
     if (!raw) return '';
     const digits = raw.replace(/[^0-9]/g, '');
@@ -174,61 +186,87 @@ export default function PrintQueuePage() {
       return [];
     }
 
-    // Grouping map: key = customerPhone (or orderId)
+    const normalizePhoneKey = (p?: string): string => {
+      if (!p) return '';
+      const digits = p.replace(/[^0-9]/g, '');
+      return digits.length >= 10 ? digits.slice(-10) : digits;
+    };
+
+    const resolveCustomerName = (senderName?: string, orderName?: string, phone?: string): string => {
+      const isGeneric = (n?: string) => !n || n.includes('Print Desk') || n.includes('SVV Communication') || n === 'Walk-in Customer' || n === 'Test Walk-in Customer';
+      if (!isGeneric(senderName)) return senderName!.trim();
+      if (!isGeneric(orderName)) return orderName!.trim();
+      if (phone) return formatDisplayPhone(phone);
+      return 'Walk-in Customer';
+    };
+
+    // Grouping map: key = normalized 10-digit phone (or orderId)
     const customerTicketsMap: Map<string, any> = new Map();
 
     // 1. Process all WhatsApp media messages to gather all customer files
     const msgsList = Array.isArray(whatsappData) ? whatsappData : (whatsappMessages || []);
     const phoneMediaMap: Record<string, any[]> = {};
+    const phoneSenderNameMap: Record<string, string> = {};
 
     msgsList.forEach((msg: any) => {
-      if (msg.mediaUrl && msg.phone) {
-        const cleanPhone = msg.phone.trim();
-        if (!phoneMediaMap[cleanPhone]) phoneMediaMap[cleanPhone] = [];
-        
-        const isPdf = msg.mediaUrl.toLowerCase().endsWith('.pdf') || (msg.messageBody && msg.messageBody.toLowerCase().endsWith('.pdf')) || msg.mediaType === 'PDF';
-        const isImg = !isPdf && (
-          msg.mediaUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) ||
-          (msg.messageBody && msg.messageBody.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i)) ||
-          msg.mediaType === 'IMAGE'
-        );
-        const type = isPdf ? 'PDF' : isImg ? 'IMAGE' : 'DOC';
-
-        let cleanName = msg.messageBody || (isPdf ? 'Document.pdf' : 'Photo.jpg');
-        if (cleanName.startsWith('Please print photo:') || cleanName.startsWith('Please print document:') || cleanName.startsWith('Please print')) {
-          cleanName = cleanName.replace(/^Please print (photo|document):\s*/i, '').replace(/^Please print\s*/i, '').trim();
-        }
-        if (cleanName.includes('[Photo:') || cleanName.includes('[File:')) {
-          const match = cleanName.match(/\[(Photo|File):\s*([^\]]+)\]/i);
-          if (match && match[2]) cleanName = match[2].trim();
+      if (msg.phone) {
+        const phoneKey = normalizePhoneKey(msg.phone);
+        if (msg.senderName && !msg.senderName.includes('Print Desk') && !msg.senderName.includes('SVV Communication')) {
+          phoneSenderNameMap[phoneKey] = msg.senderName;
         }
 
-        const realPageCount = isPdf ? (pdfPageCountsMap[msg.mediaUrl] || 1) : 1;
+        if (msg.mediaUrl) {
+          if (!phoneMediaMap[phoneKey]) phoneMediaMap[phoneKey] = [];
+          
+          const isPdf = msg.mediaUrl.toLowerCase().endsWith('.pdf') || (msg.messageBody && msg.messageBody.toLowerCase().endsWith('.pdf')) || msg.mediaType === 'PDF';
+          const isImg = !isPdf && (
+            msg.mediaUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) ||
+            (msg.messageBody && msg.messageBody.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i)) ||
+            msg.mediaType === 'IMAGE'
+          );
+          const type = isPdf ? 'PDF' : isImg ? 'IMAGE' : 'DOC';
 
-        phoneMediaMap[cleanPhone].push({
-          id: `msg-${msg.id}`,
-          name: cleanName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
-          type,
-          url: msg.mediaUrl,
-          sizeText: isPdf ? '1.8 MB' : '2.4 MB',
-          pageCount: realPageCount,
-          createdAt: msg.createdAt,
-        });
+          let cleanName = msg.messageBody || (isPdf ? 'Document.pdf' : 'Photo.jpg');
+          if (cleanName.startsWith('Please print photo:') || cleanName.startsWith('Please print document:') || cleanName.startsWith('Please print')) {
+            cleanName = cleanName.replace(/^Please print (photo|document):\s*/i, '').replace(/^Please print\s*/i, '').trim();
+          }
+          if (cleanName.includes('[Photo:') || cleanName.includes('[File:')) {
+            const match = cleanName.match(/\[(Photo|File):\s*([^\]]+)\]/i);
+            if (match && match[2]) cleanName = match[2].trim();
+          }
+
+          const realPageCount = isPdf ? (pdfPageCountsMap[msg.mediaUrl] || 1) : 1;
+
+          phoneMediaMap[phoneKey].push({
+            id: `msg-${msg.id}`,
+            name: cleanName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
+            type,
+            url: msg.mediaUrl,
+            sizeText: isPdf ? '1.8 MB' : '2.4 MB',
+            pageCount: realPageCount,
+            createdAt: msg.createdAt,
+          });
+        }
       }
     });
 
-    // 2. Process real database orders and group them by customerPhone
+    // 2. Process real database orders and group them by normalized customer phone
     (rawOrders || []).forEach((ord: any) => {
-      const cleanPhone = ord.customerPhone ? ord.customerPhone.trim() : `phone-${ord.id}`;
-      
+      const phoneKey = normalizePhoneKey(ord.customerPhone) || `ord-${ord.id}`;
+      const attachedMedia = phoneMediaMap[phoneKey] || [];
+      const senderFromMsg = phoneSenderNameMap[phoneKey];
+      const finalCustomerName = resolveCustomerName(senderFromMsg, ord.customerName, ord.customerPhone);
+
+      // Parse comma-separated document names if any
+      const docNames = (ord.documentName || '').split(',').map((s: string) => s.trim()).filter(Boolean);
       const isPdf = ord.documentUrl?.toLowerCase().endsWith('.pdf') || ord.documentName?.toLowerCase().endsWith('.pdf');
       const isImg = !isPdf && (ord.documentUrl?.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) || ord.documentName?.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i));
       const type = isPdf ? 'PDF' : isImg ? 'IMAGE' : 'DOC';
       const realPageCount = isPdf ? (pdfPageCountsMap[ord.documentUrl] || ord.pageCount || 1) : (ord.pageCount || 1);
 
-      const orderDocItem = {
+      const primaryDocItem = {
         id: `ord-${ord.id}`,
-        name: ord.documentName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
+        name: docNames[0] || ord.documentName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
         type,
         url: ord.documentUrl || '/uploads/doc.pdf',
         sizeText: '2.1 MB',
@@ -236,35 +274,53 @@ export default function PrintQueuePage() {
         createdAt: ord.createdAt,
       };
 
-      if (!customerTicketsMap.has(cleanPhone)) {
-        // Find all WhatsApp media messages for this phone
-        const attachedMedia = phoneMediaMap[cleanPhone] || [];
-        
-        // Combine order doc with any additional whatsapp media without duplicates
+      if (!customerTicketsMap.has(phoneKey)) {
         const docItems: any[] = [];
-        const seenUrls = new Set<string>();
+        const seenNames = new Set<string>();
 
-        if (orderDocItem.url) {
-          seenUrls.add(orderDocItem.url);
-          docItems.push(orderDocItem);
+        if (primaryDocItem.url) {
+          seenNames.add(primaryDocItem.name.toLowerCase());
+          docItems.push(primaryDocItem);
         }
 
+        // Add additional comma-separated document names if available
+        if (docNames.length > 1) {
+          for (let i = 1; i < docNames.length; i++) {
+            const dName = docNames[i];
+            if (!seenNames.has(dName.toLowerCase())) {
+              seenNames.add(dName.toLowerCase());
+              const dIsPdf = dName.toLowerCase().endsWith('.pdf');
+              const dIsImg = !dIsPdf && dName.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i);
+              docItems.push({
+                id: `ord-multi-${ord.id}-${i}`,
+                name: dName,
+                type: dIsPdf ? 'PDF' : dIsImg ? 'IMAGE' : 'DOC',
+                url: ord.documentUrl || '/uploads/doc.pdf',
+                sizeText: '2.0 MB',
+                pageCount: 1,
+                createdAt: ord.createdAt,
+              });
+            }
+          }
+        }
+
+        // Add attached WhatsApp media files without duplicates
         attachedMedia.forEach((m) => {
-          if (!seenUrls.has(m.url)) {
-            seenUrls.add(m.url);
+          if (!seenNames.has(m.name.toLowerCase())) {
+            seenNames.add(m.name.toLowerCase());
             docItems.push(m);
           }
         });
 
-        // Compute exact file metrics (PDF pages included in totalPages; docs strictly non-pdf)
         const imageCount = docItems.filter((d) => d.type === 'IMAGE').length;
         const pdfCount = docItems.filter((d) => d.type === 'PDF').length;
         const docCount = docItems.filter((d) => d.type === 'DOC').length;
         const totalFiles = docItems.length;
         const totalPages = docItems.reduce((sum, d) => sum + (d.pageCount || 1), 0);
 
-        customerTicketsMap.set(cleanPhone, {
+        customerTicketsMap.set(phoneKey, {
           ...ord,
+          customerName: finalCustomerName,
           tokenNumber: ord.tokenNumber || `T-${101 + customerTicketsMap.size}`,
           docItems,
           totalFiles,
@@ -279,14 +335,15 @@ export default function PrintQueuePage() {
         });
       } else {
         // Merge into existing ticket for this customer
-        const existingTicket = customerTicketsMap.get(cleanPhone);
-        const existingUrls = new Set(existingTicket.docItems.map((d: any) => d.url));
+        const existingTicket = customerTicketsMap.get(phoneKey);
+        const existingNames = new Set(existingTicket.docItems.map((d: any) => d.name.toLowerCase()));
         
-        if (!existingUrls.has(orderDocItem.url)) {
-          existingTicket.docItems.push(orderDocItem);
+        if (!existingNames.has(primaryDocItem.name.toLowerCase())) {
+          existingNames.add(primaryDocItem.name.toLowerCase());
+          existingTicket.docItems.push(primaryDocItem);
         }
 
-        // Recompute accurate counts
+        // Recompute counts
         existingTicket.imageCount = existingTicket.docItems.filter((d: any) => d.type === 'IMAGE').length;
         existingTicket.pdfCount = existingTicket.docItems.filter((d: any) => d.type === 'PDF').length;
         existingTicket.docCount = existingTicket.docItems.filter((d: any) => d.type === 'DOC').length;
