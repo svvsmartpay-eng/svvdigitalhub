@@ -1,0 +1,40 @@
+import { z } from 'zod';
+
+const schema = z.object({
+  NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
+  PORT: z.coerce.number().default(4000),
+  API_PREFIX: z.string().default('/api/v1'),
+  DATABASE_URL: z.string(),
+  REDIS_URL: z.string(),
+  JWT_ACCESS_SECRET: z.string().min(32),
+  JWT_REFRESH_SECRET: z.string().min(32),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  BCRYPT_ROUNDS: z.coerce.number().default(12),
+  CORS_ORIGIN: z.string().default('http://localhost:3000'),
+  STORAGE_TYPE: z.enum(['local', 's3']).default('local'),
+  STORAGE_LOCAL_PATH: z.string().default('./uploads'),
+  STORAGE_MAX_FILE_SIZE_MB: z.coerce.number().default(25),
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
+  S3_ACCESS_KEY: z.string().optional(),
+  S3_SECRET_KEY: z.string().optional(),
+  S3_ENDPOINT: z.string().optional(),
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_SECURE: z.string().transform(v => v === 'true').default('false'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  EMAIL_FROM: z.string().default('SVV AMS <noreply@svvcommunication.in>'),
+  EMAIL_REPLY_TO: z.string().default('admin@svvcommunication.in'),
+  LOG_LEVEL: z.string().default('debug'),
+  QR_BASE_URL: z.string().default('http://localhost:3000/asset/qr'),
+  TZ: z.string().default('Asia/Kolkata'),
+  SEED_ADMIN_EMAIL: z.string().default('admin@svvcommunication.in'),
+  SEED_ADMIN_PASSWORD: z.string().default('SVV@Admin2026'),
+  SEED_ADMIN_NAME: z.string().default('SVV Admin'),
+  ENABLE_EMAIL_NOTIFICATIONS: z.string().transform(v => v === 'true').default('true'),
+});
+
+export const env = schema.parse(process.env);
+export type Env = typeof env;

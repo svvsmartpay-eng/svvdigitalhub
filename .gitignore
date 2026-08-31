@@ -1,0 +1,43 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Production builds
+dist/
+build/
+.output/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# WhatsApp active sessions & auth credentials (contain temporary tokens/keys)
+sessions/
+apps/api/sessions/
+*.session
+
+# Uploaded customer test files & temporary buffers
+uploads/
+apps/api/uploads/
+!apps/api/uploads/.gitkeep
+
+# Logs & temp
+logs/
+*.log
+npm-debug.log*
+.temp/
+.tmp/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,53 @@
+import { Router } from 'express';
+import authRoutes from '../modules/auth/auth.routes';
+import userRoutes from '../modules/users/users.routes';
+import branchRoutes from '../modules/branches/branches.routes';
+import categoryRoutes from '../modules/categories/categories.routes';
+import assetRoutes from '../modules/assets/assets.routes';
+import issueRoutes from '../modules/issues/issues.routes';
+import workOrderRoutes from '../modules/work-orders/work-orders.routes';
+import vendorRoutes from '../modules/vendors/vendors.routes';
+import technicianRoutes from '../modules/technicians/technicians.routes';
+import serviceVisitRoutes from '../modules/service-visits/service-visits.routes';
+import partsRoutes from '../modules/parts/parts.routes';
+import costsRoutes from '../modules/costs/costs.routes';
+import pmRoutes from '../modules/pm/pm.routes';
+import notificationRoutes from '../modules/notifications/notifications.routes';
+import auditRoutes from '../modules/audit/audit.routes';
+import dashboardRoutes from '../modules/dashboard/dashboard.routes';
+import reportsRoutes from '../modules/reports/reports.routes';
+import documentsRoutes from '../modules/documents/documents.routes';
+import alertsRoutes from '../modules/alerts/alerts.routes';
+import portalRoutes from '../modules/portal/portal.routes';
+import tasksRoutes from '../modules/tasks/tasks.routes';
+import pluginsRoutes from '../modules/plugins/plugins.routes';
+import printHubRoutes from '../modules/print-hub/printHub.routes';
+import { trackActivity } from '../middleware/activity.middleware';
+
+const router = Router();
+
+router.use('/portal', portalRoutes); // Public technician portal (token-authenticated)
+router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
+router.use('/branches', branchRoutes);
+router.use('/categories', categoryRoutes);
+router.use('/assets', assetRoutes);
+router.use('/issues', issueRoutes);
+router.use('/tasks', tasksRoutes);
+router.use('/work-orders', workOrderRoutes);
+router.use('/vendors', vendorRoutes);
+router.use('/technicians', technicianRoutes);
+router.use('/service-visits', serviceVisitRoutes);
+router.use('/parts', partsRoutes);
+router.use('/costs', costsRoutes);
+router.use('/pm', pmRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/audit', auditRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/documents', documentsRoutes);
+router.use('/alerts', alertsRoutes);
+router.use('/plugins', pluginsRoutes);
+router.use('/print-hub', printHubRoutes);
+
+export default router;
