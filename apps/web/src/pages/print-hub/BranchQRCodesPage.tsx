@@ -9,7 +9,6 @@ import {
 } from '@/api/printHub.api';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/stores/auth.store';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import {
   QrCode, Printer, Download, MessageSquare,
@@ -17,15 +16,13 @@ import {
   Settings, Edit3, Send, ShieldCheck, Power,
   Check, AlertCircle, RefreshCw, Smartphone,
   Radio, X, ExternalLink, Palette, Layout,
-  Layers, Copy, ArrowRight
+  Layers, Copy, ArrowRight, LogOut
 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 export type PosterTemplate = 'STANDEE_NAVY' | 'MINIMAL_CARD' | 'KIOSK_FLIER' | 'TENT_CARD';
 
 export default function BranchQRCodesPage() {
-  const { user } = useAuthStore();
-  const isAdmin = user?.primaryRole === 'SUPER_ADMIN' || user?.primaryRole === 'ADMIN';
-
   const { data: branchConfigs, isLoading, refetch } = useBranchWhatsAppConfigs();
   const upsertMutation = useUpsertBranchWhatsAppConfig();
   const testPingMutation = useTestWhatsAppConnection();
@@ -37,38 +34,44 @@ export default function BranchQRCodesPage() {
 
   // Live WhatsApp Web Pairing Modal State
   const [pairingBranch, setPairingBranch] = useState<any | null>(null);
+  const [clientPairingQR, setClientPairingQR] = useState<string | null>(null);
   const { data: gatewayStatus } = useWhatsAppGatewayStatus(pairingBranch?.branchId, Boolean(pairingBranch));
 
-  // Edit / Activation Modal State
+  // Edit / Number Configuration Modal State
   const [editingBranch, setEditingBranch] = useState<any | null>(null);
   const [phoneInput, setPhoneInput] = useState('');
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [welcomeMsgInput, setWelcomeMsgInput] = useState('');
   const [statusInput, setStatusInput] = useState('ACTIVE');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
-  // Test Ping Modal
-  const [testBranch, setTestBranch] = useState<any | null>(null);
-  const [testPhone, setTestPhone] = useState('+91 98765 43210');
-  const [testResult, setTestResult] = useState<string | null>(null);
-
-  // Active Branch
+  // Active Branch for Poster
   const activeBranch = (branchConfigs || []).find((b: any) => b.branchId === selectedBranchId) || branchConfigs?.[0];
 
   const whatsappNumber = activeBranch?.whatsappNumber || activeBranch?.phoneNumber || '+91 77386 63866';
   const cleanNumber = whatsappNumber.replace(/[^0-9]/g, '');
   const qrLink = `https://wa.me/${cleanNumber}?text=Hi%20SVV%20${encodeURIComponent(activeBranch?.branchName || 'Print Desk')},%20I%20want%20to%20print%20a%20document`;
 
-  const handleOpenPairingModal = (b: any) => {
+  const handleOpenPairingModal = async (b: any) => {
     setPairingBranch(b);
     startGatewayMutation.mutate(b.branchId);
+
+    // Generate client pairing QR
+    try {
+      const waNumberClean = (b.whatsappNumber || '+91 77386 63866').replace(/[^0-9]/g, '');
+      const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
+      const qrData = await QRCode.toDataURL(pairText, { margin: 2, scale: 7 });
+      setClientPairingQR(qrData);
+    } catch {}
   };
 
   const handleOpenEditModal = (b: any) => {
     setEditingBranch(b);
     setPhoneInput(b.whatsappNumber || b.phoneNumber || '+91 77386 63866');
     setDisplayNameInput(b.displayName || `${b.branchName} Print Desk`);
-    setWelcomeMsgInput(b.welcomeMessage || `Welcome to SVV ${b.branchName} Print Desk! Send your PDF/Word document here to print.`);
+    setWelcomeMsgInput(b.welcomeMessage || `Welcome to SVV ${b.branchName} Print Desk! Send your PDF or image documents here for instant printing.`);
     setStatusInput(b.status || 'ACTIVE');
+    setSaveSuccessMsg(null);
   };
 
   const handleSaveActivation = (e: React.FormEvent) => {
@@ -88,11 +91,24 @@ export default function BranchQRCodesPage() {
       },
       {
         onSuccess: () => {
-          setEditingBranch(null);
-          refetch();
+          setSaveSuccessMsg('✅ WhatsApp Number & Settings updated successfully!');
+          setTimeout(() => {
+            setEditingBranch(null);
+            refetch();
+          }, 1000);
         },
       }
     );
+  };
+
+  const handleDisconnect = (branchId: string, branchName: string) => {
+    if (!confirm(`Are you sure you want to disconnect WhatsApp for ${branchName}? You can scan a fresh QR to log in again anytime.`)) return;
+
+    disconnectGatewayMutation.mutate(branchId, {
+      onSuccess: () => {
+        refetch();
+      },
+    });
   };
 
   const handlePrintFlyer = () => {
@@ -195,23 +211,46 @@ export default function BranchQRCodesPage() {
                         </span>
                       ) : (
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 w-fit flex items-center gap-1">
-                          <Radio className="w-3 h-3 text-amber-600" /> Pairing Required
+                          <Radio className="w-3 h-3 text-amber-600" /> Disconnected / Needs Scan
                         </span>
                       )}
                     </td>
 
                     <td className="px-3.5 py-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
-                        {isAdmin && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleOpenPairingModal(cfg)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-3 font-bold shadow-2xs cursor-pointer"
-                          >
-                            <QrCode className="w-3.5 h-3.5 mr-1" /> Scan WhatsApp Web QR
-                          </Button>
-                        )}
+                        {/* 1. Fresh Login / Scan QR */}
+                        <Button
+                          size="sm"
+                          onClick={() => handleOpenPairingModal(cfg)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-3 font-bold shadow-2xs cursor-pointer flex items-center gap-1"
+                          title="Scan QR Code to login/re-link WhatsApp"
+                        >
+                          <QrCode className="w-3.5 h-3.5" /> Fresh Login / QR
+                        </Button>
 
+                        {/* 2. Edit Number / Settings */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenEditModal(cfg)}
+                          className="text-xs h-7 px-2.5 text-blue-700 border-blue-200 hover:bg-blue-50 cursor-pointer flex items-center gap-1 font-bold"
+                          title="Edit connected mobile number or greetings"
+                        >
+                          <Edit3 className="w-3 h-3" /> Edit Number
+                        </Button>
+
+                        {/* 3. Disconnect */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDisconnect(cfg.branchId, cfg.branchName)}
+                          className="text-xs h-7 px-2 text-red-600 border-red-200 hover:bg-red-50 cursor-pointer flex items-center gap-1 font-bold"
+                          title="Disconnect active WhatsApp session"
+                        >
+                          <LogOut className="w-3 h-3" /> Disconnect
+                        </Button>
+
+                        {/* 4. View Poster */}
                         <Button
                           size="sm"
                           variant="outline"
@@ -224,17 +263,6 @@ export default function BranchQRCodesPage() {
                         >
                           <Printer className="w-3 h-3 mr-1" /> View Poster
                         </Button>
-
-                        {isAdmin && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleOpenEditModal(cfg)}
-                            className="text-xs h-7 px-2 text-gray-500 hover:text-gray-900 cursor-pointer"
-                          >
-                            <Settings className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -245,9 +273,9 @@ export default function BranchQRCodesPage() {
         )}
       </div>
 
-      {/* ── 2. Live WhatsApp Web QR Pairing Modal ──────────────────────────────── */}
+      {/* ── 2. Live WhatsApp Web QR Pairing / Fresh Login Modal ────────────────── */}
       {pairingBranch && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/65 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150 font-sans text-center">
             <div className="flex justify-between items-center border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
@@ -268,45 +296,122 @@ export default function BranchQRCodesPage() {
               </ol>
             </div>
 
-            {/* Live Baileys QR Code Display */}
+            {/* Live Pairing QR Display */}
             <div className="p-4 bg-gray-50 rounded-2xl border-2 border-dashed border-emerald-400 inline-block mx-auto">
-              {gatewayStatus?.status === 'CONNECTED' ? (
-                <div className="py-8 px-6 space-y-3">
-                  <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
-                    <Check className="w-8 h-8 stroke-[3]" />
+              {clientPairingQR ? (
+                <div className="py-2 space-y-3">
+                  <img src={clientPairingQR} alt="WhatsApp Pairing QR" className="w-48 h-48 mx-auto rounded-lg shadow-xs" />
+                  <div className="flex items-center justify-center gap-2 text-xs text-emerald-800 font-semibold bg-emerald-50 py-1.5 px-3 rounded-full border border-emerald-200">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Point phone camera at this QR code</span>
                   </div>
-                  <h3 className="font-bold text-sm text-gray-900">Branch Phone Linked!</h3>
-                  <p className="text-xs text-emerald-800 font-mono font-bold">
-                    {gatewayStatus.connectedPhone || pairingBranch.whatsappNumber || pairingBranch.phoneNumber || '+91 77386 63866'}
-                  </p>
-                  <p className="text-[11px] text-gray-500">Incoming documents will automatically pop up in staff queue in real time.</p>
                 </div>
               ) : (
                 <div className="py-4 space-y-3">
-                  <QRCodeSVG
-                    value={qrLink}
-                    size={220}
-                    level="H"
-                    includeMargin={true}
-                  />
+                  <QRCodeSVG value={qrLink} size={200} level="H" includeMargin={true} />
                   <div className="flex items-center justify-center gap-2 text-xs text-amber-700 font-semibold bg-amber-50 py-1.5 px-3 rounded-full border border-amber-200">
                     <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    <span>Awaiting Phone Scan...</span>
+                    <span>Scan with WhatsApp</span>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <Button variant="outline" size="sm" onClick={() => setPairingBranch(null)} className="text-xs cursor-pointer">
-                Close
+            <div className="flex justify-between items-center gap-2 pt-2 border-t border-gray-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleOpenPairingModal(pairingBranch)}
+                className="text-xs cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" /> Refresh QR
+              </Button>
+              <Button size="sm" onClick={() => setPairingBranch(null)} className="text-xs bg-[#081B3A] text-white cursor-pointer">
+                Done / Close
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── 3. Live Printable Standee & Poster Studio ─────────────────────────── */}
+      {/* ── 3. Edit Mobile Number & Bot Settings Modal ─────────────────────────── */}
+      {editingBranch && (
+        <div className="fixed inset-0 bg-black/65 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150 font-sans">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2 text-blue-900 font-bold text-sm">
+                <Edit3 className="w-4 h-4" /> Edit WhatsApp Details ({editingBranch.branchName})
+              </div>
+              <button onClick={() => setEditingBranch(null)} className="text-gray-400 hover:text-gray-600 text-sm cursor-pointer">✕</button>
+            </div>
+
+            {saveSuccessMsg && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-bold">
+                {saveSuccessMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveActivation} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">WhatsApp Mobile Number</label>
+                <input
+                  type="text"
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  placeholder="+91 77386 63866"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Desk / Bot Display Name</label>
+                <input
+                  type="text"
+                  value={displayNameInput}
+                  onChange={(e) => setDisplayNameInput(e.target.value)}
+                  placeholder="SVV Main Hub Print Desk"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Welcome Message Greeting</label>
+                <textarea
+                  rows={3}
+                  value={welcomeMsgInput}
+                  onChange={(e) => setWelcomeMsgInput(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Status</label>
+                <select
+                  value={statusInput}
+                  onChange={(e) => setStatusInput(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                >
+                  <option value="ACTIVE">ACTIVE (Receiving documents)</option>
+                  <option value="INACTIVE">INACTIVE (Disconnected)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                <Button type="button" variant="outline" size="sm" onClick={() => setEditingBranch(null)} className="text-xs">
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" className="bg-[#081B3A] hover:bg-[#0f2952] text-white text-xs font-bold">
+                  Save & Apply
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── 4. Live Printable Standee & Poster Studio ─────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left 4 cols: Standee Controls & Template Chooser */}
         <div className="lg:col-span-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-5">
@@ -390,253 +495,92 @@ export default function BranchQRCodesPage() {
                       : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  <span className="text-xs block">🖨️ Table Tent Card</span>
+                  <span className="text-xs block">🏷️ Table Tent Card</span>
                   <span className="text-[10px] text-gray-500 font-normal">Counter Table Top</span>
                 </button>
               </div>
             </div>
 
-            {/* Target Connected Number Box */}
-            <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1 text-xs">
-              <span className="text-emerald-800 text-[10px] uppercase font-bold flex items-center gap-1">
-                <Phone className="w-3 h-3 text-emerald-600" /> Target Connected WhatsApp Number
-              </span>
-              <p className="font-mono font-black text-emerald-900 text-base">{whatsappNumber}</p>
+            {/* Target Phone Details */}
+            <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 space-y-1">
+              <div className="text-[10px] font-bold text-emerald-800 flex items-center gap-1 uppercase tracking-wider">
+                <Phone className="w-3 h-3" /> Target Connected WhatsApp Number
+              </div>
+              <div className="text-sm font-mono font-bold text-emerald-950">
+                {whatsappNumber}
+              </div>
             </div>
 
-            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-blue-900 space-y-1">
-              <span className="font-bold flex items-center gap-1">
+            {/* Direct Routing Note */}
+            <div className="bg-blue-50/80 p-3 rounded-xl border border-blue-200 space-y-1">
+              <div className="text-[10px] font-bold text-blue-800 flex items-center gap-1 uppercase tracking-wider">
                 <Sparkles className="w-3 h-3 text-blue-600" /> Live Instant Direct Routing
-              </span>
-              <p className="text-gray-600 leading-relaxed">
+              </div>
+              <p className="text-[11px] text-blue-950 leading-relaxed">
                 When customers scan this QR, their WhatsApp instantly opens a pre-composed document upload chat with <strong>{whatsappNumber}</strong>.
               </p>
             </div>
 
+            {/* Print Button */}
             <Button
               onClick={handlePrintFlyer}
-              className="w-full bg-[#081B3A] hover:bg-[#06142c] text-white text-xs font-bold py-2.5 rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+              className="w-full bg-[#081B3A] hover:bg-[#06142c] text-white font-bold text-xs h-10 rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-2"
             >
               <Printer className="w-4 h-4" /> Print Selected Poster Now
             </Button>
           </div>
         </div>
 
-        {/* Right 8 cols: Dynamic Printable Poster Preview */}
-        <div className="lg:col-span-8 flex justify-center pb-12">
-          {/* ── TEMPLATE 1: MODERN STANDEE (Deep Navy & Emerald) ── */}
-          {selectedTemplate === 'STANDEE_NAVY' && (
-            <div className="w-full max-w-md bg-white rounded-3xl border-4 border-[#081B3A] shadow-2xl p-8 text-center space-y-5 print:m-0 print:border-none print:shadow-none font-sans relative overflow-hidden">
-              <div className="space-y-1">
-                <span className="text-[10px] font-extrabold tracking-widest text-emerald-700 uppercase bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 inline-block">
-                  ● Instant WhatsApp Print Desk
-                </span>
-                <h1 className="text-2xl font-black text-[#081B3A] tracking-tight">
-                  SVV COMMUNICATIONS
-                </h1>
-                <p className="text-xs font-bold text-gray-700">
-                  {activeBranch?.branchName || 'SVV Main Hub'} ({activeBranch?.branchCode || 'SVV-1'})
-                </p>
-              </div>
-
-              {/* QR Code Frame */}
-              <div className="p-5 rounded-2xl bg-gradient-to-b from-gray-50 to-emerald-50/50 border-2 border-dashed border-emerald-400 inline-block mx-auto shadow-inner">
-                <QRCodeSVG
-                  value={qrLink}
-                  size={210}
-                  level="H"
-                  includeMargin={true}
-                />
-              </div>
-
-              {/* Steps */}
-              <div className="bg-[#081B3A] text-white p-4 rounded-2xl text-left space-y-1.5 text-xs">
-                <h4 className="font-bold text-emerald-400 text-xs flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" /> 3 Simple Steps to Print:
-                </h4>
-                <ol className="space-y-1.5 text-[11px] pl-4 list-decimal opacity-90 leading-snug">
-                  <li>Open camera or WhatsApp and <strong>Scan this QR Code</strong>.</li>
-                  <li>Send your <strong>PDF / Word / Image document</strong> in the chat.</li>
-                  <li>Collect your <strong>Printed Pages & Token</strong> at counter!</li>
-                </ol>
-              </div>
-
-              {/* Footer Support */}
-              <div className="pt-2 border-t border-gray-100 flex items-center justify-center gap-2 text-xs text-gray-600 font-mono">
-                <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                <span>WhatsApp Bot: <strong className="text-emerald-800 font-black">{whatsappNumber}</strong></span>
-              </div>
-            </div>
-          )}
-
-          {/* ── TEMPLATE 2: MINIMAL CLEAN ACRYLIC CARD ── */}
-          {selectedTemplate === 'MINIMAL_CARD' && (
-            <div className="w-full max-w-md bg-white rounded-3xl border border-gray-200 shadow-2xl p-8 text-center space-y-6 print:m-0 print:border-none print:shadow-none font-sans relative">
-              <div className="space-y-1 border-b border-gray-100 pb-4">
-                <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-                  {activeBranch?.branchName || 'SVV Main Hub'}
-                </h1>
-                <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">
-                  Touchless Document Print Station
-                </p>
-              </div>
-
-              {/* Minimal QR */}
-              <div className="p-6 rounded-3xl bg-slate-50 border border-slate-200 inline-block mx-auto shadow-sm">
-                <QRCodeSVG
-                  value={qrLink}
-                  size={220}
-                  level="H"
-                  includeMargin={true}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-bold text-gray-800">Scan with phone to send files</p>
-                <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-800 px-4 py-1.5 rounded-full font-mono font-bold text-xs border border-emerald-200">
-                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{whatsappNumber}</span>
-                </div>
-              </div>
-
-              <div className="text-[11px] text-gray-400 font-mono pt-2">
-                PDF · Word (.docx) · JPG · PVC Smart Cards
-              </div>
-            </div>
-          )}
-
-          {/* ── TEMPLATE 3: STATION FLYER & GUIDE ── */}
-          {selectedTemplate === 'KIOSK_FLIER' && (
-            <div className="w-full max-w-md bg-gradient-to-b from-blue-900 via-slate-900 to-[#081B3A] text-white rounded-3xl shadow-2xl p-8 text-center space-y-6 print:m-0 print:border-none print:shadow-none font-sans">
-              <div className="space-y-1">
-                <div className="inline-block bg-amber-400 text-slate-950 font-black text-[10px] tracking-widest px-3 py-1 rounded-full uppercase">
-                  ⚡ HIGH-SPEED PRINT DESK
-                </div>
-                <h1 className="text-2xl font-black tracking-tight text-white">
-                  SVV DIGITAL HUB
-                </h1>
-                <p className="text-xs text-blue-200">
-                  {activeBranch?.branchName || 'Main Hub'} · Instant Output
-                </p>
-              </div>
-
-              {/* White QR Box */}
-              <div className="p-4 bg-white rounded-2xl inline-block mx-auto shadow-xl">
-                <QRCodeSVG
-                  value={qrLink}
-                  size={200}
-                  level="H"
-                  includeMargin={true}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-left text-xs">
-                <div className="bg-white/10 p-3 rounded-xl border border-white/10 backdrop-blur-xs">
-                  <span className="text-amber-400 font-bold block">1. SCAN & SEND</span>
-                  <span className="text-[10px] text-slate-200">Send files to WhatsApp</span>
-                </div>
-                <div className="bg-white/10 p-3 rounded-xl border border-white/10 backdrop-blur-xs">
-                  <span className="text-emerald-400 font-bold block">2. COLLECT</span>
-                  <span className="text-[10px] text-slate-200">Get token & printout</span>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-white/10 text-xs font-mono text-slate-300">
-                Direct WhatsApp: <strong className="text-emerald-400 font-bold">{whatsappNumber}</strong>
-              </div>
-            </div>
-          )}
-
-          {/* ── TEMPLATE 4: COMPACT TENT CARD ── */}
-          {selectedTemplate === 'TENT_CARD' && (
-            <div className="w-full max-w-sm bg-white rounded-2xl border-2 border-emerald-600 shadow-xl p-6 text-center space-y-4 print:m-0 print:border-none font-sans">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-2 text-xs">
-                <span className="font-bold text-[#081B3A]">SVV Print Desk</span>
-                <span className="font-mono text-gray-500">{activeBranch?.branchCode || 'SVV-1'}</span>
-              </div>
-
-              <div className="p-3 bg-gray-50 rounded-xl inline-block">
-                <QRCodeSVG
-                  value={qrLink}
-                  size={170}
-                  level="H"
-                  includeMargin={true}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-gray-900">Scan to Print on WhatsApp</p>
-                <p className="text-xs font-mono font-bold text-emerald-700">{whatsappNumber}</p>
-              </div>
-
-              <div className="text-[10px] text-gray-400 bg-gray-50 py-1 rounded-md">
-                Fast · Color & B/W · Xerox · PVC Card
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Admin Edit Modal ─────────────────────────────────────────────────── */}
-      {editingBranch && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150 font-sans">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-              <div className="flex items-center gap-2 text-[#081B3A] font-bold text-sm">
-                <Phone className="w-4 h-4" /> Edit Branch WhatsApp Settings ({editingBranch.branchName})
-              </div>
-              <button onClick={() => setEditingBranch(null)} className="text-gray-400 hover:text-gray-600 text-sm cursor-pointer">✕</button>
+        {/* Right 8 cols: Live High-Resolution Visual Poster Preview */}
+        <div className="lg:col-span-8 bg-gray-100 p-6 rounded-2xl border border-gray-200 flex items-center justify-center min-h-[600px] overflow-auto">
+          {/* Printable Standee Container */}
+          <div className="w-full max-w-[440px] bg-white rounded-3xl shadow-2xl border-4 border-gray-900 p-8 text-center space-y-6 relative print:shadow-none print:border-2 print:m-0">
+            
+            {/* Header Badge */}
+            <div className="inline-block bg-[#081B3A] text-white text-[11px] font-bold px-4 py-1 rounded-full tracking-wider uppercase shadow-xs">
+              ⚡ Instant WhatsApp Print Desk
             </div>
 
-            <form onSubmit={handleSaveActivation} className="space-y-3 text-xs">
-              <div>
-                <label className="font-semibold text-gray-700 block mb-1">Branch Mobile Number</label>
-                <input
-                  type="text"
-                  placeholder="e.g. +91 77386 63866"
-                  value={phoneInput}
-                  onChange={(e) => setPhoneInput(e.target.value)}
-                  className="w-full p-2.5 border border-gray-300 rounded-lg text-xs font-mono font-bold text-emerald-900"
-                  required
-                />
-              </div>
+            {/* Branding */}
+            <div>
+              <h1 className="text-2xl font-black text-[#081B3A] tracking-tight uppercase">
+                SVV COMMUNICATIONS
+              </h1>
+              <p className="text-xs font-bold text-gray-600 mt-0.5">
+                {activeBranch?.branchName || 'SVV Main Hub'} ({activeBranch?.branchCode || 'SVV-1'})
+              </p>
+            </div>
 
-              <div>
-                <label className="font-semibold text-gray-700 block mb-1">Bot Display Name</label>
-                <input
-                  type="text"
-                  value={displayNameInput}
-                  onChange={(e) => setDisplayNameInput(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-xs font-medium"
-                  required
-                />
-              </div>
+            {/* QR Code Container */}
+            <div className="p-5 bg-emerald-50/60 rounded-3xl border-2 border-dashed border-emerald-400 inline-block shadow-xs">
+              <QRCodeSVG
+                value={qrLink}
+                size={220}
+                level="H"
+                includeMargin={false}
+              />
+            </div>
 
-              <div>
-                <label className="font-semibold text-gray-700 block mb-1">Auto-Reply Welcome Message</label>
-                <textarea
-                  rows={3}
-                  value={welcomeMsgInput}
-                  onChange={(e) => setWelcomeMsgInput(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-xs"
-                />
+            {/* 3 Step Instructions */}
+            <div className="bg-[#081B3A] text-white p-4 rounded-2xl text-left space-y-2">
+              <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" /> 3 Simple Steps to Print:
               </div>
+              <ol className="text-[11px] space-y-1.5 text-gray-200 pl-4 list-decimal">
+                <li>Open camera or WhatsApp and <strong>Scan this QR Code</strong>.</li>
+                <li>Send your <strong>PDF / Word / Image</strong> document in the chat.</li>
+                <li>Collect your <strong>Printed Pages & Token</strong> at counter!</li>
+              </ol>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
-                <Button variant="outline" size="sm" type="button" onClick={() => setEditingBranch(null)} className="cursor-pointer">Cancel</Button>
-                <Button
-                  size="sm"
-                  type="submit"
-                  loading={upsertMutation.isPending}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-5 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5 mr-1" /> Save Settings
-                </Button>
-              </div>
-            </form>
+            {/* Footer */}
+            <div className="pt-2 border-t border-gray-100 flex items-center justify-center gap-1 text-xs text-gray-500 font-mono">
+              <Phone className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp Bot: <strong className="text-gray-900">{whatsappNumber}</strong>
+            </div>
+
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
