@@ -300,7 +300,7 @@ export async function processIncomingWhatsAppMessage(params: {
   let createdOrder: any = null;
   let autoReplyText = '';
   const now = new Date();
-  const receivedTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const receivedTime = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
 
   // If a document/image was sent, group into existing token or generate new token!
   if (params.mediaUrl) {
