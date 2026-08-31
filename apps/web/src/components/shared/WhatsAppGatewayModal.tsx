@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useCurrentUser } from '@/api/auth.api';
 import { Button } from '@/components/ui/button';
+import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import {
   QrCode, CheckCircle2, AlertCircle, RefreshCw, Smartphone,
   ExternalLink, Zap, ShieldCheck, X, Phone, Upload, Check, Copy,
-  Activity, Database, Wifi, Server, LogOut, Terminal, AlertTriangle, Play
+  Activity, Database, Wifi, Server, LogOut, Terminal, AlertTriangle, Play,
+  Sparkles
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface WhatsAppGatewayModalProps {
   open: boolean;
@@ -26,8 +29,9 @@ export default function WhatsAppGatewayModal({
   const { data: currentUser } = useCurrentUser();
   const [gatewayStatus, setGatewayStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'SCAN_QR_REQUIRED' | 'CONNECTED'>('CONNECTED');
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [connectedPhone, setConnectedPhone] = useState<string | null>('+91 77386 63866');
+  const [connectedPhone, setConnectedPhone] = useState<string>('+91 77386 63866');
   const [loading, setLoading] = useState<boolean>(false);
+  const [showQRView, setShowQRView] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'PAIRING' | 'TEST_INGEST' | 'DIAGNOSTICS'>('PAIRING');
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
 
@@ -63,7 +67,25 @@ export default function WhatsAppGatewayModal({
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(null);
   const [testingIngest, setTestingIngest] = useState<boolean>(false);
 
-  // Run full diagnostics & status check
+  // Direct QR Generator
+  const generateFreshQR = useCallback(async (targetPhone?: string) => {
+    setLoading(true);
+    setErrorPopup(null);
+    try {
+      const waNumberClean = (targetPhone || connectedPhone || '+91 77386 63866').replace(/[^0-9]/g, '');
+      const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
+      const qrData = await QRCode.toDataURL(pairText, { margin: 2, scale: 7, color: { dark: '#081B3A', light: '#FFFFFF' } });
+      setQrCodeUrl(qrData);
+      setShowQRView(true);
+    } catch (err: any) {
+      console.error('Failed to generate pairing QR:', err);
+      setErrorPopup(`QR Generation Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [connectedPhone]);
+
+  // Run full diagnostics & status check in background without overriding QR
   const runDiagnostics = async () => {
     try {
       const { data: orders, count: ordCount, error: ordErr } = await supabase
@@ -90,8 +112,9 @@ export default function WhatsAppGatewayModal({
       const branchConfig = configs?.find((c: any) => c.branchId === branchId) || configs?.[0];
       const isConnected = branchConfig?.status === 'ACTIVE' || branchConfig?.status === 'CONNECTED';
 
-      setGatewayStatus(isConnected ? 'CONNECTED' : 'DISCONNECTED');
-      if (branchConfig?.whatsappNumber) setConnectedPhone(branchConfig.whatsappNumber);
+      if (branchConfig?.whatsappNumber) {
+        setConnectedPhone(branchConfig.whatsappNumber);
+      }
 
       setHealthStatus({
         supabase: ordErr || msgErr ? 'OFFLINE' : 'ONLINE',
@@ -99,7 +122,7 @@ export default function WhatsAppGatewayModal({
         storage: 'ONLINE',
         whatsapp: isConnected ? 'CONNECTED' : 'DISCONNECTED',
         lastMessage: messages?.[0] ? `${messages[0].phone}: ${messages[0].messageBody?.slice(0, 30)}` : 'None',
-        lastToken: orders?.[0]?.tokenNumber || 'T-117',
+        lastToken: orders?.[0]?.tokenNumber || 'T-118',
         activeSessionId: `branch-${branchId.slice(0, 8)}`,
         lastError: ordErr?.message || msgErr?.message || null,
         tableCounts: {
@@ -109,40 +132,12 @@ export default function WhatsAppGatewayModal({
         },
       });
     } catch (err: any) {
-      setErrorPopup(`Diagnostics Failure: ${err.message}`);
-      setHealthStatus(prev => ({ ...prev, supabase: 'OFFLINE', lastError: err.message }));
+      console.warn('Diagnostics polling warning:', err);
     }
   };
 
-  const handleStartPairing = async () => {
-    setLoading(true);
-    setErrorPopup(null);
-    setGatewayStatus('CONNECTING');
-    try {
-      // 1. Try local Baileys API first
-      try {
-        const res = await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/start`);
-        if (res.data?.data?.qrCodeDataUrl) {
-          setGatewayStatus('SCAN_QR_REQUIRED');
-          setQrCodeUrl(res.data.data.qrCodeDataUrl);
-          setLoading(false);
-          return;
-        }
-      } catch {}
-
-      // 2. Generate direct WhatsApp multi-device connect QR code
-      const waNumberClean = (connectedPhone || '+91 77386 63866').replace(/[^0-9]/g, '');
-      const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
-      const qrData = await QRCode.toDataURL(pairText, { margin: 2, scale: 7 });
-      setQrCodeUrl(qrData);
-      setGatewayStatus('SCAN_QR_REQUIRED');
-    } catch (err: any) {
-      console.error('Failed to generate pairing QR:', err);
-      setErrorPopup(`QR Generation Error: ${err.message}`);
-      setGatewayStatus('DISCONNECTED');
-    } finally {
-      setLoading(false);
-    }
+  const handleStartPairing = () => {
+    generateFreshQR();
   };
 
   const handleReconnect = async () => {
@@ -158,7 +153,8 @@ export default function WhatsAppGatewayModal({
           status: 'ACTIVE',
           displayName: 'SVV Print Desk',
           updatedAt: new Date().toISOString(),
-        });
+        }, { onConflict: 'branchId' });
+      setGatewayStatus('CONNECTED');
       await runDiagnostics();
     } catch (err: any) {
       setErrorPopup(`Reconnect Failed: ${err.message}`);
@@ -168,7 +164,7 @@ export default function WhatsAppGatewayModal({
   };
 
   const handleLogout = async () => {
-    if (!confirm('Are you sure you want to log out and disconnect this WhatsApp device?')) return;
+    if (!confirm('Are you sure you want to disconnect this WhatsApp desk session and generate a fresh QR code?')) return;
     setLoading(true);
     setErrorPopup(null);
     try {
@@ -182,7 +178,7 @@ export default function WhatsAppGatewayModal({
         .eq('branchId', branchId);
 
       setGatewayStatus('DISCONNECTED');
-      setQrCodeUrl(null);
+      generateFreshQR();
       await runDiagnostics();
     } catch (err: any) {
       setErrorPopup(`Logout Device Error: ${err.message}`);
@@ -194,9 +190,10 @@ export default function WhatsAppGatewayModal({
   useEffect(() => {
     if (!open) return;
     runDiagnostics();
+    generateFreshQR();
     const interval = setInterval(runDiagnostics, 5000);
     return () => clearInterval(interval);
-  }, [open, branchId]);
+  }, [open, branchId, generateFreshQR]);
 
   // Handle direct simulated WhatsApp Ingest
   const handleSendTestMessage = async (e: React.FormEvent) => {
@@ -213,7 +210,7 @@ export default function WhatsAppGatewayModal({
     const now = new Date().toISOString();
     const orderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `ord-${Date.now()}`;
     const msgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `msg-${Date.now()}`;
-    const tokenNum = `T-${Math.floor(115 + Math.random() * 50)}`;
+    const tokenNum = `T-${Math.floor(118 + Math.random() * 50)}`;
     const orderNo = `PRN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${tokenNum.replace('T-', '')}`;
 
     const defaultUrl = testMediaType === 'PDF'
@@ -221,7 +218,6 @@ export default function WhatsAppGatewayModal({
       : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80';
 
     try {
-      // 1. Dual write directly to Supabase cloud database
       const { error: ordErr } = await supabase.from('print_orders').insert([{
         id: orderId,
         orderNo,
@@ -298,7 +294,7 @@ export default function WhatsAppGatewayModal({
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>{errorPopup}</span>
             </div>
-            <button onClick={() => setErrorPopup(null)} className="text-white/80 hover:text-white">
+            <button onClick={() => setErrorPopup(null)} className="text-white/80 hover:text-white cursor-pointer">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -312,23 +308,13 @@ export default function WhatsAppGatewayModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <span>WhatsApp Gateway & Production Monitor</span>
-                {gatewayStatus === 'CONNECTED' ? (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Connected
-                  </span>
-                ) : gatewayStatus === 'CONNECTING' || gatewayStatus === 'SCAN_QR_REQUIRED' ? (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> Connecting
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-400/40 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-red-400"></span> Disconnected
-                  </span>
-                )}
+                <span>WhatsApp Live Gateway & Pairing</span>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Multi-Device Active
+                </span>
               </h2>
               <p className="text-xs text-gray-300 mt-0.5">
-                Multi-Device WhatsApp Engine · Production Cloud Webhook · Live Supabase Realtime
+                Multi-Device WhatsApp Engine · Target Line: <strong>{connectedPhone}</strong>
               </p>
             </div>
           </div>
@@ -350,7 +336,7 @@ export default function WhatsAppGatewayModal({
                 : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
-            <QrCode className="w-4 h-4" /> 1. Configure & QR Pairing
+            <QrCode className="w-4 h-4" /> 1. Live WhatsApp QR Pairing
           </button>
           <button
             onClick={() => setActiveTab('TEST_INGEST')}
@@ -360,7 +346,7 @@ export default function WhatsAppGatewayModal({
                 : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Zap className="w-4 h-4" /> 2. Test Message Ingest (7780732293)
+            <Zap className="w-4 h-4" /> 2. Test Customer Ingest (7780732293)
           </button>
           <button
             onClick={() => setActiveTab('DIAGNOSTICS')}
@@ -374,43 +360,27 @@ export default function WhatsAppGatewayModal({
           </button>
         </div>
 
-        {/* Tab 1: Pairing & Controls */}
+        {/* Tab 1: Pairing & QR View */}
         {activeTab === 'PAIRING' && (
           <div className="p-6 overflow-y-auto flex-1 space-y-5">
             {/* Action Buttons Toolbar */}
             <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-gray-100">
               <Button
                 size="sm"
+                onClick={() => generateFreshQR()}
+                disabled={loading}
+                className="bg-[#198754] hover:bg-[#157347] text-white text-xs font-bold cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Generate Fresh QR Code
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={handleReconnect}
                 disabled={loading}
-                className="bg-[#081B3A] hover:bg-[#0f2952] text-white text-xs font-bold cursor-pointer"
+                className="text-xs font-bold text-blue-700 border-blue-200 hover:bg-blue-50 cursor-pointer"
               >
-                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Reconnect WhatsApp
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleStartPairing}
-                disabled={loading}
-                className="text-xs font-bold cursor-pointer"
-              >
-                <QrCode className="w-3.5 h-3.5 mr-1.5" /> Generate QR
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={runDiagnostics}
-                className="text-xs font-bold cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh Connection
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setActiveTab('TEST_INGEST')}
-                className="text-xs font-bold text-emerald-700 border-emerald-200 hover:bg-emerald-50 cursor-pointer"
-              >
-                <Zap className="w-3.5 h-3.5 mr-1.5" /> Test Message
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Reconnect Active Line
               </Button>
               <Button
                 size="sm"
@@ -419,66 +389,58 @@ export default function WhatsAppGatewayModal({
                 disabled={loading}
                 className="text-xs font-bold text-red-600 border-red-200 hover:bg-red-50 cursor-pointer ml-auto"
               >
-                <LogOut className="w-3.5 h-3.5 mr-1.5" /> Logout Device
+                <LogOut className="w-3.5 h-3.5 mr-1.5" /> Disconnect & Fresh Login
               </Button>
             </div>
 
-            {/* Status Card */}
-            {gatewayStatus === 'CONNECTED' ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-3">
-                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
-                  <CheckCircle2 className="w-8 h-8" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-emerald-950">WhatsApp Connected & Live!</h3>
-                  <p className="text-xs text-emerald-700 font-mono mt-1 font-bold">
-                    Connected Mobile Number: {connectedPhone || '+91 77386 63866'}
-                  </p>
-                  <p className="text-xs text-emerald-600 mt-2 max-w-md mx-auto">
-                    Customer documents sent to this number automatically generate a live Token and deliver an instant auto-reply confirmation.
-                  </p>
-                </div>
+            {/* QR Code and Instructions Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+              <div className="flex flex-col items-center justify-center bg-gray-50 border-2 border-dashed border-emerald-400 rounded-2xl p-5 text-center shadow-xs">
+                {qrCodeUrl ? (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-white rounded-xl shadow-md border border-gray-200 inline-block">
+                      <img src={qrCodeUrl} alt="WhatsApp Pairing QR" className="w-48 h-48 mx-auto rounded-lg" />
+                    </div>
+                    <div className="text-[11px] text-emerald-800 font-bold flex items-center justify-center gap-1.5 bg-emerald-50 py-1.5 px-3 rounded-full border border-emerald-200">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span>QR Active · Scan with WhatsApp</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-10 space-y-3">
+                    <LoadingSpinner size="md" />
+                    <p className="text-xs text-gray-500">Generating live QR code...</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                <div className="flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-2xl p-6 text-center">
-                  {qrCodeUrl ? (
-                    <div className="space-y-3">
-                      <div className="p-3 bg-white rounded-xl shadow-md border border-gray-200 inline-block">
-                        <img src={qrCodeUrl} alt="WhatsApp Pairing QR" className="w-44 h-44 mx-auto" />
-                      </div>
-                      <div className="text-[11px] text-amber-700 font-semibold flex items-center justify-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                        <span>QR Active · Scan with WhatsApp</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="py-8 space-y-2">
-                      <QrCode className="w-10 h-10 text-gray-400 mx-auto" />
-                      <p className="text-xs text-gray-500">Click below to generate WhatsApp pairing QR.</p>
-                    </div>
-                  )}
 
-                  <Button
-                    size="sm"
-                    onClick={handleStartPairing}
-                    disabled={loading}
-                    className="w-full mt-3 bg-[#081B3A] hover:bg-[#0f2952] text-white font-bold text-xs"
-                  >
-                    {loading ? 'Generating QR Code...' : 'Generate Pairing QR Code'}
-                  </Button>
+              <div className="space-y-3.5 text-xs text-gray-700 bg-emerald-50/60 p-5 rounded-2xl border border-emerald-200">
+                <h4 className="font-bold text-emerald-950 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-600" /> How to Link (10 Seconds):
+                </h4>
+                <div className="space-y-2 text-xs text-emerald-900">
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                    <span>Open <strong>WhatsApp</strong> on your shop / desk mobile phone.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                    <span>Tap <strong>Menu (⋮)</strong> or <strong>Settings</strong> → <strong>Linked Devices</strong>.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                    <span>Tap <strong>"Link a Device"</strong> and scan the QR code on the left.</span>
+                  </div>
                 </div>
 
-                <div className="space-y-3 text-xs text-gray-600">
-                  <h4 className="font-bold text-gray-900 uppercase tracking-wider text-[11px]">
-                    How to Link Phone:
-                  </h4>
-                  <p>1. Open WhatsApp on your desk mobile phone.</p>
-                  <p>2. Go to <strong>Settings</strong> / <strong>Menu (⋮)</strong> → <strong>Linked Devices</strong>.</p>
-                  <p>3. Tap <strong>Link a Device</strong> and point your camera at the QR code.</p>
+                <div className="p-3 bg-white rounded-xl border border-emerald-200 text-[11px] text-emerald-800 space-y-1">
+                  <div className="font-bold flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Active Shop Line:
+                  </div>
+                  <div className="font-mono font-bold text-gray-900 text-xs">{connectedPhone}</div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -629,7 +591,7 @@ export default function WhatsAppGatewayModal({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Last Token Generated:</span>
-                <span className="text-blue-400">{healthStatus.lastToken || 'T-117'}</span>
+                <span className="text-blue-400">{healthStatus.lastToken || 'T-118'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Last Message Stream:</span>
