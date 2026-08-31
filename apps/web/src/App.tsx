@@ -38,7 +38,7 @@ import CustomerTokensPage from './pages/print-hub/CustomerTokensPage';
 import AdvertisementsPage from './pages/print-hub/AdvertisementsPage';
 import BranchQRCodesPage from './pages/print-hub/BranchQRCodesPage';
 import PrintAnalyticsPage from './pages/print-hub/PrintAnalyticsPage';
-import React from 'react';
+import SystemDiagnosticsPage from './pages/admin/SystemDiagnosticsPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore(s => s.accessToken);
@@ -108,6 +108,7 @@ const router = createBrowserRouter([
       { path: 'technicians', element: <TechnicianListPage /> },
       // Admin
       { path: 'admin/live-staff', element: <LiveStaffPage /> },
+      { path: 'admin/diagnostics', element: <SystemDiagnosticsPage /> },
       // My Jobs (Technician)
       { path: 'my-jobs', element: <MyJobsPage /> },
       // Parts / Costs
