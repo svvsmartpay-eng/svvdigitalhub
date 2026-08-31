@@ -386,6 +386,53 @@ export async function processIncomingWhatsAppMessage(params: {
       });
     }
 
+    // Dual-write sync directly to Supabase cloud database
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseCloud = createClient(
+        'https://kxacmxxktuvildjjvnjs.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74'
+      );
+
+      if (createdOrder) {
+        await supabaseCloud.from('print_orders').upsert([{
+          id: createdOrder.id,
+          orderNo: createdOrder.orderNo,
+          tokenNumber: createdOrder.tokenNumber,
+          organizationId: createdOrder.organizationId,
+          branchId: createdOrder.branchId,
+          customerName: createdOrder.customerName,
+          customerPhone: createdOrder.customerPhone,
+          source: createdOrder.source,
+          documentUrl: createdOrder.documentUrl,
+          documentName: createdOrder.documentName,
+          pageCount: createdOrder.pageCount,
+          colorMode: createdOrder.colorMode,
+          copies: createdOrder.copies,
+          totalAmount: createdOrder.totalAmount,
+          status: createdOrder.status,
+          createdAt: createdOrder.createdAt,
+          updatedAt: new Date().toISOString(),
+        }]);
+      }
+
+      await supabaseCloud.from('whatsapp_messages').upsert([{
+        id: incomingMsg.id,
+        organizationId: incomingMsg.organizationId,
+        branchId: incomingMsg.branchId,
+        phone: incomingMsg.phone,
+        senderName: incomingMsg.senderName,
+        messageBody: incomingMsg.messageBody,
+        mediaUrl: incomingMsg.mediaUrl,
+        mediaType: incomingMsg.mediaType,
+        isIncoming: true,
+        orderId: createdOrder?.id || null,
+        createdAt: incomingMsg.createdAt,
+      }]);
+    } catch (supaSyncErr) {
+      console.warn('Supabase sync warning:', supaSyncErr);
+    }
+
     // Send automated WhatsApp acknowledgement to customer
     if (autoReplyText) {
       try {
@@ -394,7 +441,7 @@ export async function processIncomingWhatsAppMessage(params: {
         console.warn('Socket outbound reply skipped:', e);
       }
 
-      await prisma.whatsAppMessage.create({
+      const outMsg = await prisma.whatsAppMessage.create({
         data: {
           organizationId: orgId,
           branchId,
@@ -406,6 +453,25 @@ export async function processIncomingWhatsAppMessage(params: {
           orderId: createdOrder?.id || null,
         },
       });
+
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseCloud = createClient(
+          'https://kxacmxxktuvildjjvnjs.supabase.co',
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74'
+        );
+        await supabaseCloud.from('whatsapp_messages').insert([{
+          id: outMsg.id,
+          organizationId: outMsg.organizationId,
+          branchId: outMsg.branchId,
+          phone: outMsg.phone,
+          senderName: outMsg.senderName,
+          messageBody: outMsg.messageBody,
+          isIncoming: false,
+          orderId: createdOrder?.id || null,
+          createdAt: outMsg.createdAt,
+        }]);
+      } catch (_) {}
     }
   }
 

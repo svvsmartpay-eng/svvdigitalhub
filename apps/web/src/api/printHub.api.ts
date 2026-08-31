@@ -99,7 +99,7 @@ export function usePrintOrders(params?: any) {
         const res = await apiClient.get('/print-hub/orders', { params });
         if (res.data?.data && res.data.data.length > 0) return res.data;
       } catch (e) {
-        // Backend not reached, fall through to Supabase
+        // Backend not reached, query Supabase
       }
 
       // 2. Query Supabase Cloud Database directly
@@ -109,7 +109,7 @@ export function usePrintOrders(params?: any) {
           .select('*, branch:branches(name), assignedStaff:users(name)')
           .order('createdAt', { ascending: false });
 
-        if (!error && supaOrders && supaOrders.length > 0) {
+        if (!error && supaOrders) {
           const formatted = supaOrders.map(o => ({
             id: o.id,
             orderNo: o.orderNo,
@@ -152,27 +152,27 @@ export function usePrintOrders(params?: any) {
           };
         }
       } catch (supaErr) {
-        console.warn('Supabase fetch error, using fallback:', supaErr);
+        console.warn('Supabase fetch error:', supaErr);
       }
 
       return {
-        data: FALLBACK_ORDERS,
-        total: FALLBACK_ORDERS.length,
+        data: [],
+        total: 0,
         page: 1,
         limit: 50,
         stats: {
-          totalOrders: 5,
-          pending: 1,
+          totalOrders: 0,
+          pending: 0,
           printing: 0,
           ready: 0,
-          delivered: 4,
-          totalPages: 13,
-          totalRevenue: 220,
+          delivered: 0,
+          totalPages: 0,
+          totalRevenue: 0,
         },
       };
     },
-    refetchInterval: 5000,
-    staleTime: 3000,
+    refetchInterval: 3000,
+    staleTime: 2000,
   });
 }
 
@@ -310,36 +310,15 @@ export function useWhatsAppInbox(branchId?: string) {
           .select('*')
           .order('createdAt', { ascending: false });
 
-        if (!error && supaMsgs && supaMsgs.length > 0) {
+        if (!error && supaMsgs) {
           return supaMsgs;
         }
       } catch {}
 
-      return [
-        {
-          id: 'wa-1',
-          phone: '+91 99515 27090',
-          senderName: 'Venu Gopal',
-          messageBody: 'Please print photo: Aadhaar_Front.jpg',
-          mediaUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
-          mediaType: 'IMAGE',
-          isIncoming: true,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: 'wa-2',
-          phone: '+91 91777 78485',
-          senderName: 'ranisri8485',
-          messageBody: 'Please print document: Certificate_Doc.pdf',
-          mediaUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
-          mediaType: 'PDF',
-          isIncoming: true,
-          createdAt: new Date().toISOString(),
-        }
-      ];
+      return [];
     },
-    refetchInterval: 5000,
-    staleTime: 3000,
+    refetchInterval: 3000,
+    staleTime: 2000,
   });
 }
 
