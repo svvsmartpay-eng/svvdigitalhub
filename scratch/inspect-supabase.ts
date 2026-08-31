@@ -5,32 +5,34 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74'
 );
 
-async function inspect() {
-  const { data: orders } = await supabase.from('print_orders').select('*').order('createdAt', { ascending: false });
-  console.log('--- SUPABASE PRINT ORDERS ---');
-  console.table(orders?.map(o => ({
-    id: o.id,
-    token: o.tokenNumber,
-    name: o.customerName,
-    phone: o.customerPhone,
-    doc: o.documentName,
-    url: o.documentUrl,
-    status: o.status,
-    createdAt: o.createdAt,
-  })));
+async function inspectSupabase() {
+  console.log('--- Inspecting Supabase Tables ---');
+  const tables = [
+    'users',
+    'roles',
+    'branches',
+    'vendors',
+    'technicians',
+    'assets',
+    'issues',
+    'work_orders',
+    'print_orders',
+    'whatsapp_messages',
+    'branch_whatsapp_configs',
+  ];
 
-  const { data: msgs } = await supabase.from('whatsapp_messages').select('*').order('createdAt', { ascending: false });
-  console.log('--- SUPABASE WHATSAPP MESSAGES ---');
-  console.table(msgs?.map(m => ({
-    id: m.id,
-    phone: m.phone,
-    sender: m.senderName,
-    msg: m.messageBody,
-    media: m.mediaUrl,
-    type: m.mediaType,
-    incoming: m.isIncoming,
-    createdAt: m.createdAt,
-  })));
+  for (const table of tables) {
+    try {
+      const { data, count, error } = await supabase.from(table).select('*', { count: 'exact' });
+      if (error) {
+        console.log(`❌ Table ${table}: Error - ${error.message}`);
+      } else {
+        console.log(`✅ Table ${table}: ${data.length} rows (sample: ${JSON.stringify(data[0] ? Object.keys(data[0]) : 'empty')})`);
+      }
+    } catch (e: any) {
+      console.log(`❌ Table ${table}: Exception - ${e.message}`);
+    }
+  }
 }
 
-inspect();
+inspectSupabase();
