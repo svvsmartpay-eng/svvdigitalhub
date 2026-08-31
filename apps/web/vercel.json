@@ -1,10 +1,33 @@
 {
   "framework": "vite",
-  "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/api/whatsapp-webhook",
+      "destination": "/api/whatsapp-webhook.js"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
     }
   ]
 }
