@@ -176,6 +176,16 @@ export function usePrintOrders(params?: any) {
   });
 }
 
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export function useCreatePrintOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -208,7 +218,11 @@ export function useCreatePrintOrder() {
         }
       } catch {}
 
+      const newId = generateUUID();
+      const now = new Date().toISOString();
+
       const newOrderPayload = {
+        id: newId,
         orderNo,
         tokenNumber,
         organizationId: 'svv-org-001',
@@ -223,6 +237,8 @@ export function useCreatePrintOrder() {
         copies: data.copies || 1,
         totalAmount: data.totalAmount || 100,
         status: 'PENDING',
+        createdAt: now,
+        updatedAt: now,
       };
 
       try {
@@ -234,7 +250,6 @@ export function useCreatePrintOrder() {
 
         if (!error && inserted) {
           return {
-            id: inserted.id,
             ...inserted,
             assignedStaffName: 'Unassigned',
           };
@@ -244,31 +259,12 @@ export function useCreatePrintOrder() {
       }
 
       return {
-        id: `ord-${Date.now()}`,
         ...newOrderPayload,
         assignedStaffName: 'Unassigned',
-        createdAt: new Date().toISOString(),
       };
     },
-    onSuccess: (newOrder) => {
-      // Optimistically update queries
-      qc.setQueryData(['print-orders', undefined], (old: any) => {
-        if (!old) return { data: [newOrder], total: 1, stats: { totalOrders: 1, pending: 1 } };
-        const existing = old.data || [];
-        return {
-          ...old,
-          data: [newOrder, ...existing],
-          total: (old.total || existing.length) + 1,
-          stats: {
-            ...(old.stats || {}),
-            totalOrders: ((old.stats?.totalOrders || existing.length) + 1),
-            pending: ((old.stats?.pending || 0) + 1),
-          }
-        };
-      });
-      qc.invalidateQueries({ queryKey: ['print-orders'] });
-      qc.invalidateQueries({ queryKey: ['print-hub-analytics'] });
-      qc.invalidateQueries({ queryKey: ['print-tokens'] });
+    onSuccess: () => {
+      qc.invalidateQueries();
     },
   });
 }
@@ -356,20 +352,27 @@ export function useSendStaffDirectChatMessage() {
       } catch {}
 
       try {
+        const now = new Date().toISOString();
         await supabase.from('whatsapp_messages').insert([{
+          id: generateUUID(),
           phone: data.phone,
           senderName: 'SVV Staff',
           messageBody: data.messageBody,
           isIncoming: false,
+          organizationId: 'svv-org-001',
+          branchId: data.branchId || 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
           orderId: data.orderId || null,
+          createdAt: now,
+          updatedAt: now,
         }]);
-      } catch {}
+      } catch (err) {
+        console.warn('Supabase whatsapp message insert error:', err);
+      }
 
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['whatsapp-inbox'] });
-      qc.invalidateQueries({ queryKey: ['print-orders'] });
+      qc.invalidateQueries();
     },
   });
 }
