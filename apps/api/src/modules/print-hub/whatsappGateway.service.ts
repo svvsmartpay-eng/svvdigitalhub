@@ -238,8 +238,11 @@ export async function startBranchWhatsAppSession(orgId: string, branchId: string
           const fileNameOnDisk = `${Date.now()}_${docName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
           const diskPath = path.join(UPLOADS_DIR, fileNameOnDisk);
           fs.writeFileSync(diskPath, buffer as Buffer);
-          mediaUrl = `/uploads/whatsapp/${fileNameOnDisk}`;
-          console.log(`💾 [WhatsApp Gateway] Document saved to ${mediaUrl}`);
+          
+          // Embed base64 for seamless live rendering on Vercel
+          const base64Str = (buffer as Buffer).toString('base64');
+          mediaUrl = `data:application/pdf;base64,${base64Str}`;
+          console.log(`💾 [WhatsApp Gateway] Document saved locally and prepared as live DataURL (${(buffer as Buffer).length} bytes)`);
         } catch (err) {
           console.error('Error downloading WhatsApp document', err);
         }
@@ -262,8 +265,11 @@ export async function startBranchWhatsAppSession(orgId: string, branchId: string
           const fileNameOnDisk = `${Date.now()}_${docName}`;
           const diskPath = path.join(UPLOADS_DIR, fileNameOnDisk);
           fs.writeFileSync(diskPath, buffer as Buffer);
-          mediaUrl = `/uploads/whatsapp/${fileNameOnDisk}`;
-          console.log(`💾 [WhatsApp Gateway] Image saved to ${mediaUrl}`);
+          
+          // Embed base64 for seamless live rendering on Vercel
+          const base64Str = (buffer as Buffer).toString('base64');
+          mediaUrl = `data:image/jpeg;base64,${base64Str}`;
+          console.log(`💾 [WhatsApp Gateway] Image saved locally and prepared as live DataURL (${(buffer as Buffer).length} bytes)`);
         } catch (err) {
           console.error('Error downloading WhatsApp image', err);
         }
@@ -288,6 +294,16 @@ export async function startBranchWhatsAppSession(orgId: string, branchId: string
         });
 
         console.log(`✨ [WhatsApp Gateway] Message processed for ${customerName} (${customerPhone}). Auto-Reply: "${processed.autoReplySent?.replace(/\n/g, ' ')}"`);
+
+        // Send live WhatsApp auto-reply confirmation back to customer
+        if (sock && msg.key.remoteJid && processed.autoReplySent) {
+          try {
+            await sock.sendMessage(msg.key.remoteJid, { text: processed.autoReplySent });
+            console.log(`📤 [WhatsApp Gateway] Sent live auto-reply to ${msg.key.remoteJid}`);
+          } catch (replyErr) {
+            console.warn('Failed to send live socket auto-reply', replyErr);
+          }
+        }
       } catch (err) {
         console.error('Error handling incoming WhatsApp message in DB', err);
       }
