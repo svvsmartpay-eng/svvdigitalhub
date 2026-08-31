@@ -5,9 +5,14 @@ export function usePluginSettings() {
   return useQuery({
     queryKey: ['plugin-settings'],
     queryFn: async () => {
-      const res = await apiClient.get('/plugins');
-      return res.data.data;
+      try {
+        const res = await apiClient.get('/plugins');
+        return res.data.data;
+      } catch {
+        return { print_whatsapp_hub: true };
+      }
     },
+    initialData: { print_whatsapp_hub: true },
     staleTime: 60 * 1000,
   });
 }

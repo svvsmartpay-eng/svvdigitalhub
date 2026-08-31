@@ -10,9 +10,10 @@ import {
 
 export default function PrintHubLayout() {
   const { data: plugins, isLoading } = usePluginSettings();
-  const isEnabled = plugins?.print_whatsapp_hub;
+  // Default to enabled (true) if plugin status is loading or backend is not connected
+  const isEnabled = plugins ? plugins.print_whatsapp_hub !== false : true;
 
-  if (isLoading) {
+  if (isLoading && plugins === undefined) {
     return (
       <div className="py-24 text-center">
         <LoadingSpinner size="lg" />
@@ -20,7 +21,7 @@ export default function PrintHubLayout() {
     );
   }
 
-  if (!isEnabled) {
+  if (plugins && plugins.print_whatsapp_hub === false) {
     return (
       <div className="max-w-md mx-auto my-16 p-8 bg-white rounded-2xl border border-gray-200 text-center shadow-sm space-y-4 font-sans">
         <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">

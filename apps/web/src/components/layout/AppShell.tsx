@@ -36,7 +36,7 @@ export default function AppShell() {
   const { data: issueStats } = useIssueStats();
   const { data: assetStats } = useAssetStats();
   const { data: plugins } = usePluginSettings();
-  const isPrintHubEnabled = Boolean(plugins?.print_whatsapp_hub);
+  const isPrintHubEnabled = plugins ? plugins.print_whatsapp_hub !== false : true;
   const { data: printAnalytics } = usePrintHubAnalytics();
 
   const getBadgeInfo = (path: string) => {
