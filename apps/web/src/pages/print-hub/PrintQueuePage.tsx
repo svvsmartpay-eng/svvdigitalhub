@@ -10,13 +10,14 @@ import { directPrintFiles } from '@/lib/directPrintEngine';
 import ContinuousPdfViewer from '@/components/shared/ContinuousPdfViewer';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
 import WhatsAppChatModal from '@/components/shared/WhatsAppChatModal';
+import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
 import {
   Printer, Play, CheckCircle2, Search, Plus, RefreshCw, 
   X, Phone, Clock, User, Lock, File, FileText, 
   LayoutGrid, List, ChevronLeft, ChevronRight, 
   RotateCw, ZoomIn, ZoomOut, Maximize2, Eye, Crop,
   SlidersHorizontal, ChevronDown, Check, ArrowRight, Files,
-  Copy, MessageSquare, PhoneCall
+  Copy, MessageSquare, PhoneCall, Smartphone
 } from 'lucide-react';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -64,6 +65,7 @@ export default function PrintQueuePage() {
   const createOrderMutation = useCreatePrintOrder();
 
   const [showNewOrder, setShowNewOrder] = useState(false);
+  const [showGatewayModal, setShowGatewayModal] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [docName, setDocName] = useState('');
@@ -588,6 +590,16 @@ export default function PrintQueuePage() {
               <span>List / 3-Panel</span>
             </button>
           </div>
+
+          {/* WhatsApp Gateway Pairing Button */}
+          <Button
+            size="sm"
+            onClick={() => setShowGatewayModal(true)}
+            className="bg-[#198754] hover:bg-[#157347] text-[#FFFFFF] text-xs font-bold h-10 px-3.5 rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+            title="Scan QR Code to connect shop WhatsApp number"
+          >
+            <Smartphone className="w-4 h-4" /> 📱 Link WhatsApp
+          </Button>
 
           <Button
             size="sm"
@@ -1598,6 +1610,17 @@ export default function PrintQueuePage() {
           totalAmount={activeChatOrder.totalAmount || 10}
         />
       )}
+
+      {/* ── WHATSAPP GATEWAY PAIRING & TEST INGEST MODAL ───────────────────────── */}
+      <WhatsAppGatewayModal
+        open={showGatewayModal}
+        onClose={() => setShowGatewayModal(false)}
+        branchId={branchId}
+        onOrderCreated={() => {
+          refetch();
+          refetchWhatsApp();
+        }}
+      />
     </div>
   );
 }

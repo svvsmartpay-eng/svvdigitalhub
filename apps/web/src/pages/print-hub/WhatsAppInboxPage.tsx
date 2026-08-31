@@ -9,6 +9,7 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import DocumentQuickPrintViewer from './DocumentQuickPrintViewer';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
 import WhatsAppChatModal from '@/components/shared/WhatsAppChatModal';
+import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
 import {
   Printer, Check, FileText, Phone, User, Search, CheckCircle2,
   Eye, Crop, RotateCw, RotateCcw, CreditCard, Scissors, Upload,
@@ -17,7 +18,7 @@ import {
   Zap, Clock, UserCheck, Image as ImageIcon, Copy, Trash2, Undo, Redo,
   CheckCheck, Lock, Unlock, HelpCircle, ChevronRight, Minimize2,
   X, Maximize2, Sparkle, LayoutGrid, CheckSquare, Crosshair,
-  Square, FlipHorizontal, Play, Download, MessageSquare
+  Square, FlipHorizontal, Play, Download, MessageSquare, Smartphone
 } from 'lucide-react';
 
 // Configure local PDF worker via Vite URL
@@ -82,6 +83,7 @@ export default function WhatsAppInboxPage() {
 
   // ── Document Quick Print Viewer State (Direct PDF / DOCX Lossless Print) ────
   const [showDocQuickPrint, setShowDocQuickPrint] = useState<boolean>(false);
+  const [showGatewayModal, setShowGatewayModal] = useState<boolean>(false);
 
   // ── Print Verification & Work Locking State ────────────────────────────────
   const [showPrintVerificationModal, setShowPrintVerificationModal] = useState<boolean>(false);
@@ -2110,6 +2112,15 @@ export default function WhatsAppInboxPage() {
 
           <Button
             size="sm"
+            onClick={() => setShowGatewayModal(true)}
+            className="h-8 text-xs font-bold bg-[#198754] hover:bg-[#157347] text-white border border-[#157347] cursor-pointer rounded-xl flex items-center gap-1.5"
+            title="Scan QR Code to link WhatsApp"
+          >
+            <Smartphone className="w-3.5 h-3.5" /> 📱 Link WhatsApp
+          </Button>
+
+          <Button
+            size="sm"
             onClick={() => {
               window.location.href = '/print-hub/queue';
             }}
@@ -3056,6 +3067,17 @@ export default function WhatsAppInboxPage() {
           totalAmount={customPrice || 10}
         />
       )}
+
+      {/* ── WHATSAPP GATEWAY PAIRING & TEST INGEST MODAL ───────────────────────── */}
+      <WhatsAppGatewayModal
+        open={showGatewayModal}
+        onClose={() => setShowGatewayModal(false)}
+        branchId={selectedBranchId || branches?.[0]?.id || 'f5abaacc-d2b6-4591-91fb-314b2188e18c'}
+        onOrderCreated={() => {
+          refetch();
+          refetchOrders();
+        }}
+      />
     </div>
   );
 }
