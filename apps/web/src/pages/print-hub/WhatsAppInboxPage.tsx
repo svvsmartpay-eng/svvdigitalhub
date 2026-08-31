@@ -4,8 +4,6 @@ import { useBranches } from '@/api/branches.api';
 import { useCurrentUser } from '@/api/auth.api';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import DocumentQuickPrintViewer from './DocumentQuickPrintViewer';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
 import WhatsAppChatModal from '@/components/shared/WhatsAppChatModal';
@@ -20,9 +18,6 @@ import {
   X, Maximize2, Sparkle, LayoutGrid, CheckSquare, Crosshair,
   Square, FlipHorizontal, Play, Download, MessageSquare, Smartphone
 } from 'lucide-react';
-
-// Configure local PDF worker via Vite URL
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 function formatDisplayPhone(raw: string): string {
   if (!raw) return '';
@@ -619,44 +614,10 @@ export default function WhatsAppInboxPage() {
       setActiveCropBox({ x: 0, y: 0, w: 100, h: 100 });
       setActiveQuad({ tl: { x: 0, y: 0 }, tr: { x: 100, y: 0 }, br: { x: 100, y: 100 }, bl: { x: 0, y: 100 } });
       setCurrentPdfPage(1);
-
-      try {
-        const loadingTask = pdfjsLib.getDocument({ url: primaryUrl, withCredentials: false });
-        const pdf = await loadingTask.promise;
-        setPdfDocProxy(pdf);
-        const totalPgs = pdf.numPages || 1;
-        setPdfPageCount(totalPgs);
-        setSelectedPdfPages(Array.from({ length: totalPgs }, (_, i) => i + 1));
-
-        // Render Page 1 immediately from actual PDF bytes
-        const page1 = await renderSinglePdfPage(pdf, 1);
-        if (page1) {
-          setDocumentImageSrc(page1.dataUrl);
-          setLoadedSourceImage(page1.img);
-          setPdfPagesList([page1]);
-        }
-        setIsFileLoading(false);
-
-        // Background pre-render all remaining pages
-        if (totalPgs > 1) {
-          setIsRenderingPdfPages(true);
-          (async () => {
-            const pages: any[] = page1 ? [page1] : [];
-            for (let i = 2; i <= totalPgs; i++) {
-              const p = await renderSinglePdfPage(pdf, i);
-              if (p) pages.push(p);
-            }
-            setPdfPagesList(pages.sort((a, b) => a.pageNum - b.pageNum));
-            setIsRenderingPdfPages(false);
-          })();
-        }
-      } catch (err: any) {
-        console.warn('[PDF Loader] Real PDF render error:', err);
-        setIsFileLoading(false);
-        setLoadedSourceImage(null);
-        setDocumentImageSrc('');
-        setFileLoadError('PDF preview unavailable from file bytes. Click below to open original file.');
-      }
+      setPdfPageCount(1);
+      setSelectedPdfPages([1]);
+      setDocumentImageSrc(primaryUrl);
+      setIsFileLoading(false);
     } else {
       // ── 3. REAL IMAGE FILES (JPG, PNG, WEBP) ───────────────────────────────
       setIsPdfDocument(false);

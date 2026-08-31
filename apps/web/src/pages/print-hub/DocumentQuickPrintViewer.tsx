@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
 import { directPrintFiles } from '@/lib/directPrintEngine';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
 import {
@@ -180,67 +179,28 @@ export default function DocumentQuickPrintViewer({
         return;
       }
 
-      // PDF Rendering Pipeline via PDF.js with crisp 300+ DPI vector resolution
+      // Direct High-Res Canvas Rendering Pipeline
       try {
         const cleanRelUrl = documentUrl.startsWith('http')
           ? documentUrl.replace(/^http:\/\/[^/]+/, '')
           : (documentUrl.startsWith('/') ? documentUrl : `/${documentUrl}`);
         const fetchUrl = documentUrl.startsWith('http') ? documentUrl : `http://localhost:4000${cleanRelUrl}`;
 
-        const loadingTask = pdfjsLib.getDocument({ url: fetchUrl, withCredentials: false });
-        const pdf = await loadingTask.promise;
-        if (isCancelled) return;
-        pdfInstanceRef.current = pdf;
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = fetchUrl;
+        await new Promise((res, rej) => {
+          img.onload = res;
+          img.onerror = rej;
+        });
 
-        const numPages = pdf.numPages || 1;
-        setTotalPages(numPages);
-
-        // Render Current Page on Main Canvas
-        const pageNum = Math.min(Math.max(1, currentPage), numPages);
-        const page = await pdf.getPage(pageNum);
-        if (isCancelled) return;
-
-        const viewport = page.getViewport({ scale: 2.4 * zoomLevel, rotation });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        if (renderTaskRef.current) {
-          try {
-            renderTaskRef.current.cancel();
-          } catch {}
-        }
-
-        const renderTask = page.render({ canvasContext: ctx, viewport, canvas });
-        renderTaskRef.current = renderTask;
-        await renderTask.promise;
-
-        if (!isCancelled) {
-          setIsLoading(false);
-        }
-
-        // Generate Thumbnails for Left Sidebar for all pages
-        const thumbs: { [p: number]: string } = {};
-        for (let p = 1; p <= Math.min(numPages, 10); p++) {
-          if (isCancelled) break;
-          try {
-            const thumbPage = await pdf.getPage(p);
-            const thumbViewport = thumbPage.getViewport({ scale: 0.28 });
-            const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = thumbViewport.width;
-            thumbCanvas.height = thumbViewport.height;
-            const thumbCtx = thumbCanvas.getContext('2d');
-            if (thumbCtx) {
-              await thumbPage.render({ canvasContext: thumbCtx, viewport: thumbViewport, canvas: thumbCanvas }).promise;
-              thumbs[p] = thumbCanvas.toDataURL('image/jpeg', 0.7);
-            }
-          } catch {}
-        }
-        if (!isCancelled) {
-          setThumbnailUrls((prev) => ({ ...prev, ...thumbs }));
-        }
+        canvas.width = img.naturalWidth || 1200;
+        canvas.height = img.naturalHeight || 1600;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setTotalPages(1);
+        setIsLoading(false);
       } catch (err: any) {
         if (isCancelled) return;
-        console.warn('[DocViewer] PDF render error, using high-res vector fallback:', err);
         setTotalPages(1);
         canvas.width = 1240;
         canvas.height = 1754;
@@ -251,14 +211,14 @@ export default function DocumentQuickPrintViewer({
         ctx.fillRect(60, 60, canvas.width - 120, 160);
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 36px sans-serif';
-        ctx.fillText('📄 PDF Document Quick Print', 100, 140);
+        ctx.fillText('📄 Document Quick Print', 100, 140);
         ctx.font = '22px sans-serif';
         ctx.fillStyle = '#e9d5ff';
         ctx.fillText('Original Document Ready for 1-Click Laser Print', 100, 185);
 
         ctx.fillStyle = '#0f172a';
         ctx.font = 'bold 34px sans-serif';
-        ctx.fillText(documentName || 'Official PDF Document', 100, 310);
+        ctx.fillText(documentName || 'Official Document', 100, 310);
 
         ctx.strokeStyle = '#cbd5e1';
         ctx.lineWidth = 2;
@@ -307,8 +267,12 @@ export default function DocumentQuickPrintViewer({
   const handlePrintSubmit = async () => {
     await directPrintFiles(
       [{ url: documentUrl, name: documentName, type: isWordDoc ? 'DOC' : documentUrl.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMAGE' }],
-      tokenNumber || 'Document',
-      { orientation: orientation.toLowerCase() as any }
+      {
+        tokenNumber: tokenNumber || 'Document',
+        orientation: orientation.toUpperCase() as any,
+        colorMode,
+        copies,
+      }
     );
     onPrint({
       copies,

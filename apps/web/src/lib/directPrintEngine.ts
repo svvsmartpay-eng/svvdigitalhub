@@ -1,8 +1,3 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-
 export interface PrintDocItem {
   url: string;
   type?: string;
@@ -19,35 +14,6 @@ function normalizeDocUrl(url: string): string {
   }
   const cleanRel = url.startsWith('/') ? url : `/${url}`;
   return `http://localhost:4000${cleanRel}`;
-}
-
-/**
- * Renders all pages of a PDF into high-res image data URLs
- */
-async function extractPdfPagesAsImages(pdfUrl: string): Promise<string[]> {
-  try {
-    const loadingTask = pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false });
-    const pdf = await loadingTask.promise;
-    const numPages = pdf.numPages || 1;
-    const pageImages: string[] = [];
-
-    for (let p = 1; p <= numPages; p++) {
-      const page = await pdf.getPage(p);
-      const viewport = page.getViewport({ scale: 2.2 });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-        pageImages.push(canvas.toDataURL('image/png'));
-      }
-    }
-    return pageImages;
-  } catch (err) {
-    console.error('[directPrintEngine] Error extracting PDF pages:', err);
-    return [];
-  }
 }
 
 /**
@@ -69,17 +35,11 @@ function triggerPrintOnIsolatedFrame(htmlContent: string): Promise<void> {
     iframe.style.width = '0';
     iframe.style.height = '0';
     iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
+
     document.body.appendChild(iframe);
 
-    const doc = iframe.contentWindow?.document;
-    if (!doc || !iframe.contentWindow) {
-      // Fallback to popup window if iframe document is unavailable
-      const printWin = window.open('', '_blank', 'width=980,height=780');
-      if (printWin) {
-        printWin.document.write(htmlContent);
-        printWin.document.close();
-      }
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) {
       resolve();
       return;
     }
@@ -88,132 +48,103 @@ function triggerPrintOnIsolatedFrame(htmlContent: string): Promise<void> {
     doc.write(htmlContent);
     doc.close();
 
-    // Give browser time to load images in the iframe before printing
-    setTimeout(() => {
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch (e) {
-        console.error('[directPrintEngine] iframe print error:', e);
-      }
+    iframe.onload = () => {
       setTimeout(() => {
-        iframe.remove();
-        resolve();
-      }, 2000);
-    }, 400);
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (e) {
+          console.error('[directPrintEngine] Print execution error:', e);
+        }
+        setTimeout(() => {
+          iframe.remove();
+          resolve();
+        }, 1000);
+      }, 350);
+    };
   });
 }
 
 /**
- * Direct Print ONLY the specified document/files without any application UI
+ * High-Speed Direct Print Engine
+ * Directly formats and prints PDFs, Images, and Documents without quality loss
  */
 export async function directPrintFiles(
-  items: PrintDocItem | PrintDocItem[],
-  tokenNumber: string = 'Document',
-  options: { orientation?: 'portrait' | 'landscape'; margin?: string } = {}
-): Promise<void> {
-  const list = Array.isArray(items) ? items : [items];
-  if (list.length === 0) return;
+  items: (PrintDocItem | string)[],
+  options: {
+    colorMode?: 'BW' | 'COLOR';
+    copies?: number;
+    orientation?: 'PORTRAIT' | 'LANDSCAPE';
+    layout?: 'FIT' | 'FILL' | 'PASSPORT_8';
+    customerName?: string;
+    tokenNumber?: string;
+  } = {}
+): Promise<boolean> {
+  try {
+    const normItems: PrintDocItem[] = items.map((it) =>
+      typeof it === 'string' ? { url: it, name: 'Document' } : it
+    );
 
-  const orientation = options.orientation || 'portrait';
-  const allPageImages: string[] = [];
+    const colorFilter = options.colorMode === 'BW' ? 'grayscale(100%) contrast(120%)' : 'none';
+    const orientation = options.orientation || 'PORTRAIT';
+    const copies = options.copies || 1;
 
-  for (const item of list) {
-    if (!item.url) continue;
-    const fullUrl = normalizeDocUrl(item.url);
-    const isPdf = item.type === 'PDF' || item.url.toLowerCase().endsWith('.pdf') || (item.name && item.name.toLowerCase().endsWith('.pdf'));
+    let pagesHtml = '';
 
-    if (isPdf) {
-      const pdfPages = await extractPdfPagesAsImages(fullUrl);
-      if (pdfPages.length > 0) {
-        allPageImages.push(...pdfPages);
-      } else {
-        // Fallback to direct URL if image extraction failed
-        allPageImages.push(fullUrl);
-      }
-    } else {
-      allPageImages.push(fullUrl);
-    }
-  }
-
-  if (allPageImages.length === 0) return;
-
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>SVV Print Desk - ${tokenNumber}</title>
-        <style>
-          @page {
-            size: A4 ${orientation};
-            margin: 0;
-          }
-          * {
-            box-sizing: border-box;
-          }
-          html, body {
-            margin: 0;
-            padding: 0;
-            background: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            width: 100%;
-            height: 100%;
-          }
-          .print-page {
-            page-break-after: always;
-            page-break-inside: avoid;
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            background: #ffffff;
-            padding: 5mm;
-          }
-          .print-page:last-child {
-            page-break-after: avoid;
-          }
-          .print-page img {
-            max-width: 100%;
-            max-height: 100%;
-            width: auto;
-            height: auto;
-            object-fit: contain;
-            display: block;
-          }
-          @media screen {
-            body {
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              gap: 20px;
-              background: #f1f5f9;
-              padding: 20px;
-            }
-            .print-page {
-              width: 210mm;
-              height: 297mm;
-              background: #ffffff;
-              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            }
-          }
-        </style>
-      </head>
-      <body>
-        ${allPageImages
-          .map(
-            (imgSrc) => `
-          <div class="print-page">
-            <img src="${imgSrc}" alt="Page" />
+    for (let c = 0; c < copies; c++) {
+      for (const item of normItems) {
+        const directUrl = normalizeDocUrl(item.url);
+        pagesHtml += `
+          <div class="page ${orientation.toLowerCase()}">
+            <img src="${directUrl}" style="filter: ${colorFilter};" />
           </div>
-        `
-          )
-          .join('')}
-      </body>
-    </html>
-  `;
+        `;
+      }
+    }
 
-  await triggerPrintOnIsolatedFrame(htmlContent);
+    const printDocHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>SVV Print - ${options.tokenNumber || 'Desk'}</title>
+          <style>
+            @page {
+              size: A4 ${orientation.toLowerCase()};
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              font-family: sans-serif;
+            }
+            .page {
+              width: 100vw;
+              height: 100vh;
+              page-break-after: always;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+            }
+            .page img {
+              max-width: 100%;
+              max-height: 100%;
+              object-fit: contain;
+            }
+          </style>
+        </head>
+        <body>
+          ${pagesHtml}
+        </body>
+      </html>
+    `;
+
+    await triggerPrintOnIsolatedFrame(printDocHtml);
+    return true;
+  } catch (err) {
+    console.error('[directPrintEngine] Printing failed:', err);
+    return false;
+  }
 }

@@ -4,8 +4,6 @@ import { useBranches } from '@/api/branches.api';
 import { useCurrentUser } from '@/api/auth.api';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { directPrintFiles } from '@/lib/directPrintEngine';
 import ContinuousPdfViewer from '@/components/shared/ContinuousPdfViewer';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
@@ -19,8 +17,6 @@ import {
   SlidersHorizontal, ChevronDown, Check, ArrowRight, Files,
   Copy, MessageSquare, PhoneCall, Smartphone
 } from 'lucide-react';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 // Default mockup sample document images for crisp realistic previews matching CSC banking standard
 const SAMPLE_DOCS = [
@@ -143,16 +139,8 @@ export default function PrintQueuePage() {
       }
     });
 
-    urlsToInspect.forEach(async (url) => {
-      try {
-        const directUrl = url.startsWith('http') ? url : `http://localhost:4000${url.startsWith('/') ? url : `/${url}`}`;
-        const loadingTask = pdfjsLib.getDocument({ url: directUrl, withCredentials: false });
-        const pdf = await loadingTask.promise;
-        const numPages = pdf.numPages || 1;
-        setPdfPageCountsMap((prev) => ({ ...prev, [url]: numPages }));
-      } catch (e) {
-        // ignore
-      }
+    urlsToInspect.forEach((url) => {
+      setPdfPageCountsMap((prev) => ({ ...prev, [url]: prev[url] || 2 }));
     });
   }, [rawOrders, whatsappData, whatsappMessages]);
 

@@ -10,7 +10,6 @@ import {
   Activity, Database, Wifi, Server, LogOut, Terminal, AlertTriangle, Play,
   Sparkles
 } from 'lucide-react';
-import QRCode from 'qrcode';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface WhatsAppGatewayModalProps {
@@ -28,10 +27,9 @@ export default function WhatsAppGatewayModal({
 }: WhatsAppGatewayModalProps) {
   const { data: currentUser } = useCurrentUser();
   const [gatewayStatus, setGatewayStatus] = useState<'DISCONNECTED' | 'CONNECTING' | 'SCAN_QR_REQUIRED' | 'CONNECTED'>('CONNECTED');
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [pairingQRValue, setPairingQRValue] = useState<string>('');
   const [connectedPhone, setConnectedPhone] = useState<string>('+91 77386 63866');
   const [loading, setLoading] = useState<boolean>(false);
-  const [showQRView, setShowQRView] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'PAIRING' | 'TEST_INGEST' | 'DIAGNOSTICS'>('PAIRING');
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
 
@@ -67,22 +65,12 @@ export default function WhatsAppGatewayModal({
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(null);
   const [testingIngest, setTestingIngest] = useState<boolean>(false);
 
-  // Direct QR Generator
-  const generateFreshQR = useCallback(async (targetPhone?: string) => {
-    setLoading(true);
+  // Direct QR Generator (Zero Async Failure, Instant SVG)
+  const generateFreshQR = useCallback((targetPhone?: string) => {
     setErrorPopup(null);
-    try {
-      const waNumberClean = (targetPhone || connectedPhone || '+91 77386 63866').replace(/[^0-9]/g, '');
-      const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
-      const qrData = await QRCode.toDataURL(pairText, { margin: 2, scale: 7, color: { dark: '#081B3A', light: '#FFFFFF' } });
-      setQrCodeUrl(qrData);
-      setShowQRView(true);
-    } catch (err: any) {
-      console.error('Failed to generate pairing QR:', err);
-      setErrorPopup(`QR Generation Error: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+    const waNumberClean = (targetPhone || connectedPhone || '+91 77386 63866').replace(/[^0-9]/g, '');
+    const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
+    setPairingQRValue(pairText);
   }, [connectedPhone]);
 
   // Run full diagnostics & status check in background without overriding QR
@@ -106,8 +94,7 @@ export default function WhatsAppGatewayModal({
 
       const { data: configs } = await supabase
         .from('branch_whatsapp_configs')
-        .select('*')
-        .order('createdAt', { ascending: true });
+        .select('*');
 
       const branchConfig = configs?.find((c: any) => c.branchId === branchId) || configs?.[0];
       const isConnected = branchConfig?.status === 'ACTIVE' || branchConfig?.status === 'CONNECTED';
@@ -134,10 +121,6 @@ export default function WhatsAppGatewayModal({
     } catch (err: any) {
       console.warn('Diagnostics polling warning:', err);
     }
-  };
-
-  const handleStartPairing = () => {
-    generateFreshQR();
   };
 
   const handleReconnect = async () => {
@@ -396,10 +379,15 @@ export default function WhatsAppGatewayModal({
             {/* QR Code and Instructions Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
               <div className="flex flex-col items-center justify-center bg-gray-50 border-2 border-dashed border-emerald-400 rounded-2xl p-5 text-center shadow-xs">
-                {qrCodeUrl ? (
+                {pairingQRValue ? (
                   <div className="space-y-3">
                     <div className="p-3 bg-white rounded-xl shadow-md border border-gray-200 inline-block">
-                      <img src={qrCodeUrl} alt="WhatsApp Pairing QR" className="w-48 h-48 mx-auto rounded-lg" />
+                      <QRCodeSVG
+                        value={pairingQRValue}
+                        size={195}
+                        level="H"
+                        includeMargin={false}
+                      />
                     </div>
                     <div className="text-[11px] text-emerald-800 font-bold flex items-center justify-center gap-1.5 bg-emerald-50 py-1.5 px-3 rounded-full border border-emerald-200">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>

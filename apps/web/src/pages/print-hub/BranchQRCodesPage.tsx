@@ -19,7 +19,6 @@ import {
   Radio, X, ExternalLink, Palette, Layout,
   Layers, Copy, ArrowRight, LogOut, Zap
 } from 'lucide-react';
-import QRCode from 'qrcode';
 
 export type PosterTemplate = 'STANDEE_NAVY' | 'MINIMAL_CARD' | 'KIOSK_FLIER' | 'TENT_CARD';
 
@@ -57,21 +56,12 @@ export default function BranchQRCodesPage() {
   const cleanNumber = whatsappNumber.replace(/[^0-9]/g, '');
   const qrLink = `https://wa.me/${cleanNumber}?text=Hi%20SVV%20${encodeURIComponent(activeBranch?.branchName || 'Print Desk')},%20I%20want%20to%20print%20a%20document`;
 
-  const handleOpenPairingModal = async (b: any) => {
+  const handleOpenPairingModal = (b: any) => {
     setPairingBranch(b);
-    setGeneratingQR(true);
     startGatewayMutation.mutate(b.branchId);
-
-    try {
-      const waNumberClean = (b.whatsappNumber || '+91 77386 63866').replace(/[^0-9]/g, '');
-      const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
-      const qrData = await QRCode.toDataURL(pairText, { margin: 2, scale: 7 });
-      setClientPairingQR(qrData);
-    } catch (e) {
-      console.error('QR generation error:', e);
-    } finally {
-      setGeneratingQR(false);
-    }
+    const waNumberClean = (b.whatsappNumber || '+91 77386 63866').replace(/[^0-9]/g, '');
+    const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
+    setClientPairingQR(pairText);
   };
 
   const handleOpenEditModal = (b: any) => {
@@ -310,20 +300,19 @@ export default function BranchQRCodesPage() {
                   <LoadingSpinner size="md" />
                   <p className="text-xs text-gray-500 mt-2">Generating Live QR...</p>
                 </div>
-              ) : clientPairingQR ? (
+              ) : (
                 <div className="py-2 space-y-3">
-                  <img src={clientPairingQR} alt="WhatsApp Pairing QR" className="w-48 h-48 mx-auto rounded-lg shadow-xs" />
+                  <div className="p-3 bg-white rounded-xl shadow-md border border-gray-200 inline-block">
+                    <QRCodeSVG
+                      value={clientPairingQR || qrLink}
+                      size={195}
+                      level="H"
+                      includeMargin={false}
+                    />
+                  </div>
                   <div className="flex items-center justify-center gap-2 text-xs text-emerald-800 font-semibold bg-emerald-50 py-1.5 px-3 rounded-full border border-emerald-200">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span>Point phone camera at this QR code</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="py-4 space-y-3">
-                  <QRCodeSVG value={qrLink} size={200} level="H" includeMargin={true} />
-                  <div className="flex items-center justify-center gap-2 text-xs text-amber-700 font-semibold bg-amber-50 py-1.5 px-3 rounded-full border border-amber-200">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                    <span>Scan with WhatsApp</span>
                   </div>
                 </div>
               )}
