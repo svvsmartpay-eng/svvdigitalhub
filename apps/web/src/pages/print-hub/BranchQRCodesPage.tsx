@@ -5,7 +5,8 @@ import {
   useTestWhatsAppConnection,
   useStartWhatsAppGateway,
   useWhatsAppGatewayStatus,
-  useDisconnectWhatsAppGateway
+  useDisconnectWhatsAppGateway,
+  usePrintHubRealtimeSync
 } from '@/api/printHub.api';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
@@ -16,13 +17,16 @@ import {
   Settings, Edit3, Send, ShieldCheck, Power,
   Check, AlertCircle, RefreshCw, Smartphone,
   Radio, X, ExternalLink, Palette, Layout,
-  Layers, Copy, ArrowRight, LogOut
+  Layers, Copy, ArrowRight, LogOut, Zap
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
 export type PosterTemplate = 'STANDEE_NAVY' | 'MINIMAL_CARD' | 'KIOSK_FLIER' | 'TENT_CARD';
 
 export default function BranchQRCodesPage() {
+  // Subscribe to real-time updates from Supabase Cloud
+  usePrintHubRealtimeSync();
+
   const { data: branchConfigs, isLoading, refetch } = useBranchWhatsAppConfigs();
   const upsertMutation = useUpsertBranchWhatsAppConfig();
   const testPingMutation = useTestWhatsAppConnection();
@@ -35,6 +39,7 @@ export default function BranchQRCodesPage() {
   // Live WhatsApp Web Pairing Modal State
   const [pairingBranch, setPairingBranch] = useState<any | null>(null);
   const [clientPairingQR, setClientPairingQR] = useState<string | null>(null);
+  const [generatingQR, setGeneratingQR] = useState<boolean>(false);
   const { data: gatewayStatus } = useWhatsAppGatewayStatus(pairingBranch?.branchId, Boolean(pairingBranch));
 
   // Edit / Number Configuration Modal State
@@ -54,15 +59,19 @@ export default function BranchQRCodesPage() {
 
   const handleOpenPairingModal = async (b: any) => {
     setPairingBranch(b);
+    setGeneratingQR(true);
     startGatewayMutation.mutate(b.branchId);
 
-    // Generate client pairing QR
     try {
       const waNumberClean = (b.whatsappNumber || '+91 77386 63866').replace(/[^0-9]/g, '');
       const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
       const qrData = await QRCode.toDataURL(pairText, { margin: 2, scale: 7 });
       setClientPairingQR(qrData);
-    } catch {}
+    } catch (e) {
+      console.error('QR generation error:', e);
+    } finally {
+      setGeneratingQR(false);
+    }
   };
 
   const handleOpenEditModal = (b: any) => {
@@ -91,18 +100,18 @@ export default function BranchQRCodesPage() {
       },
       {
         onSuccess: () => {
-          setSaveSuccessMsg('✅ WhatsApp Number & Settings updated successfully!');
+          setSaveSuccessMsg('✅ WhatsApp Number & Settings updated successfully in Supabase!');
           setTimeout(() => {
             setEditingBranch(null);
             refetch();
-          }, 1000);
+          }, 800);
         },
       }
     );
   };
 
   const handleDisconnect = (branchId: string, branchName: string) => {
-    if (!confirm(`Are you sure you want to disconnect WhatsApp for ${branchName}? You can scan a fresh QR to log in again anytime.`)) return;
+    if (!confirm(`Are you sure you want to disconnect WhatsApp for ${branchName}? You can scan a fresh QR code to log in anytime.`)) return;
 
     disconnectGatewayMutation.mutate(branchId, {
       onSuccess: () => {
@@ -222,7 +231,7 @@ export default function BranchQRCodesPage() {
                         <Button
                           size="sm"
                           onClick={() => handleOpenPairingModal(cfg)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-3 font-bold shadow-2xs cursor-pointer flex items-center gap-1"
+                          className="bg-[#198754] hover:bg-[#157347] text-white text-xs h-7 px-3 font-bold shadow-xs cursor-pointer flex items-center gap-1"
                           title="Scan QR Code to login/re-link WhatsApp"
                         >
                           <QrCode className="w-3.5 h-3.5" /> Fresh Login / QR
@@ -231,9 +240,8 @@ export default function BranchQRCodesPage() {
                         {/* 2. Edit Number / Settings */}
                         <Button
                           size="sm"
-                          variant="outline"
                           onClick={() => handleOpenEditModal(cfg)}
-                          className="text-xs h-7 px-2.5 text-blue-700 border-blue-200 hover:bg-blue-50 cursor-pointer flex items-center gap-1 font-bold"
+                          className="bg-[#0D6EFD] hover:bg-[#0b5ed7] text-white text-xs h-7 px-2.5 font-bold shadow-xs cursor-pointer flex items-center gap-1"
                           title="Edit connected mobile number or greetings"
                         >
                           <Edit3 className="w-3 h-3" /> Edit Number
@@ -242,9 +250,8 @@ export default function BranchQRCodesPage() {
                         {/* 3. Disconnect */}
                         <Button
                           size="sm"
-                          variant="outline"
                           onClick={() => handleDisconnect(cfg.branchId, cfg.branchName)}
-                          className="text-xs h-7 px-2 text-red-600 border-red-200 hover:bg-red-50 cursor-pointer flex items-center gap-1 font-bold"
+                          className="bg-[#DC3545] hover:bg-[#bb2d3b] text-white text-xs h-7 px-2 font-bold shadow-xs cursor-pointer flex items-center gap-1"
                           title="Disconnect active WhatsApp session"
                         >
                           <LogOut className="w-3 h-3" /> Disconnect
@@ -255,10 +262,10 @@ export default function BranchQRCodesPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => setSelectedBranchId(cfg.branchId)}
-                          className={`text-xs h-7 px-2.5 cursor-pointer ${
+                          className={`text-xs h-7 px-2.5 cursor-pointer font-bold ${
                             activeBranch?.branchId === cfg.branchId
                               ? 'bg-[#081B3A] text-white border-[#081B3A]'
-                              : 'text-gray-700'
+                              : 'text-gray-700 bg-white border-gray-300'
                           }`}
                         >
                           <Printer className="w-3 h-3 mr-1" /> View Poster
@@ -298,7 +305,12 @@ export default function BranchQRCodesPage() {
 
             {/* Live Pairing QR Display */}
             <div className="p-4 bg-gray-50 rounded-2xl border-2 border-dashed border-emerald-400 inline-block mx-auto">
-              {clientPairingQR ? (
+              {generatingQR ? (
+                <div className="py-12 px-8">
+                  <LoadingSpinner size="md" />
+                  <p className="text-xs text-gray-500 mt-2">Generating Live QR...</p>
+                </div>
+              ) : clientPairingQR ? (
                 <div className="py-2 space-y-3">
                   <img src={clientPairingQR} alt="WhatsApp Pairing QR" className="w-48 h-48 mx-auto rounded-lg shadow-xs" />
                   <div className="flex items-center justify-center gap-2 text-xs text-emerald-800 font-semibold bg-emerald-50 py-1.5 px-3 rounded-full border border-emerald-200">
@@ -322,11 +334,11 @@ export default function BranchQRCodesPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => handleOpenPairingModal(pairingBranch)}
-                className="text-xs cursor-pointer"
+                className="text-xs cursor-pointer font-bold"
               >
                 <RefreshCw className="w-3 h-3 mr-1" /> Refresh QR
               </Button>
-              <Button size="sm" onClick={() => setPairingBranch(null)} className="text-xs bg-[#081B3A] text-white cursor-pointer">
+              <Button size="sm" onClick={() => setPairingBranch(null)} className="text-xs bg-[#081B3A] text-white cursor-pointer font-bold">
                 Done / Close
               </Button>
             </div>
@@ -391,7 +403,7 @@ export default function BranchQRCodesPage() {
                 <select
                   value={statusInput}
                   onChange={(e) => setStatusInput(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none font-bold"
                 >
                   <option value="ACTIVE">ACTIVE (Receiving documents)</option>
                   <option value="INACTIVE">INACTIVE (Disconnected)</option>
@@ -403,7 +415,7 @@ export default function BranchQRCodesPage() {
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" className="bg-[#081B3A] hover:bg-[#0f2952] text-white text-xs font-bold">
-                  Save & Apply
+                  Save & Apply to Supabase
                 </Button>
               </div>
             </form>
