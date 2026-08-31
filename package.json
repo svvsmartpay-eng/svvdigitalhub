@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
-    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:api": "npm --prefix apps/api run dev",
+    "dev:web": "npm --prefix apps/web run dev",
     "build": "npm --prefix apps/web run build",
     "vercel-build": "npm --prefix apps/web run build",
     "db:migrate": "npm run db:migrate --workspace=apps/api",
