@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: svv-ams-api
+    runtime: node
+    plan: starter
+    region: singapore
+    buildCommand: npm install && npx prisma generate && npm --prefix apps/api run build
+    startCommand: node apps/api/dist/app.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        value: postgresql://postgres.kxacmxxktuvildjjvnjs:SVVAdmin%402026@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres
+      - key: SUPABASE_URL
+        value: https://kxacmxxktuvildjjvnjs.supabase.co
+      - key: SUPABASE_ANON_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74
+      - key: JWT_SECRET
+        value: svv_super_secret_jwt_key_2026_prod
+    disk:
+      name: svv-sessions-disk
+      mountPath: /app/apps/api/sessions
+      sizeGB: 1
