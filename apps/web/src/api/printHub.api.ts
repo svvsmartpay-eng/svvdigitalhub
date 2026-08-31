@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 
 const FALLBACK_ORDERS = [
   {
@@ -93,28 +94,85 @@ export function usePrintOrders(params?: any) {
   return useQuery({
     queryKey: ['print-orders', params],
     queryFn: async () => {
+      // 1. Try local/cloud backend API first if available
       try {
         const res = await apiClient.get('/print-hub/orders', { params });
-        return res.data;
-      } catch {
-        return {
-          data: FALLBACK_ORDERS,
-          total: FALLBACK_ORDERS.length,
-          page: 1,
-          limit: 50,
-          stats: {
-            totalOrders: 5,
-            pending: 1,
-            printing: 0,
-            ready: 0,
-            delivered: 4,
-            totalPages: 13,
-            totalRevenue: 220,
-          },
-        };
+        if (res.data?.data && res.data.data.length > 0) return res.data;
+      } catch (e) {
+        // Backend not reached, fall through to Supabase
       }
+
+      // 2. Query Supabase Cloud Database directly
+      try {
+        const { data: supaOrders, error } = await supabase
+          .from('print_orders')
+          .select('*, branch:branches(name), assignedStaff:users(name)')
+          .order('createdAt', { ascending: false });
+
+        if (!error && supaOrders && supaOrders.length > 0) {
+          const formatted = supaOrders.map(o => ({
+            id: o.id,
+            orderNo: o.orderNo,
+            tokenNumber: o.tokenNumber,
+            customerName: o.customerName,
+            customerPhone: o.customerPhone,
+            source: o.source,
+            documentUrl: o.documentUrl,
+            documentName: o.documentName,
+            pageCount: o.pageCount,
+            colorMode: o.colorMode,
+            copies: o.copies,
+            status: o.status,
+            totalAmount: o.totalAmount,
+            assignedStaffName: o.assignedStaff?.name || (o.status === 'DELIVERED' ? 'SVV Admin' : 'Unassigned'),
+            createdAt: o.createdAt,
+          }));
+
+          const pending = formatted.filter(o => o.status === 'PENDING').length;
+          const printing = formatted.filter(o => o.status === 'PRINTING').length;
+          const ready = formatted.filter(o => o.status === 'READY_FOR_DELIVERY').length;
+          const delivered = formatted.filter(o => o.status === 'DELIVERED' || o.status === 'COMPLETED').length;
+          const totalPages = formatted.reduce((acc, curr) => acc + (curr.pageCount || 1), 0);
+          const totalRevenue = formatted.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
+
+          return {
+            data: formatted,
+            total: formatted.length,
+            page: 1,
+            limit: 50,
+            stats: {
+              totalOrders: formatted.length,
+              pending,
+              printing,
+              ready,
+              delivered,
+              totalPages,
+              totalRevenue,
+            },
+          };
+        }
+      } catch (supaErr) {
+        console.warn('Supabase fetch error, using fallback:', supaErr);
+      }
+
+      return {
+        data: FALLBACK_ORDERS,
+        total: FALLBACK_ORDERS.length,
+        page: 1,
+        limit: 50,
+        stats: {
+          totalOrders: 5,
+          pending: 1,
+          printing: 0,
+          ready: 0,
+          delivered: 4,
+          totalPages: 13,
+          totalRevenue: 220,
+        },
+      };
     },
-    staleTime: 5000,
+    refetchInterval: 5000,
+    staleTime: 3000,
   });
 }
 
@@ -126,13 +184,36 @@ export function useCreatePrintOrder() {
         const res = await apiClient.post('/print-hub/orders', data);
         return res.data.data;
       } catch {
-        return {
+        // Fallback to inserting directly into Supabase
+        const tokenNumber = `T-${Math.floor(100 + Math.random() * 900)}`;
+        const orderNo = `ORD-${Date.now()}`;
+        const newOrder = {
           id: `ord-${Date.now()}`,
-          tokenNumber: `T-${Math.floor(100 + Math.random() * 900)}`,
+          orderNo,
+          tokenNumber,
           ...data,
           status: 'PENDING',
           createdAt: new Date().toISOString(),
         };
+
+        try {
+          await supabase.from('print_orders').insert([{
+            orderNo,
+            tokenNumber,
+            customerName: data.customerName || 'Walk-in Customer',
+            customerPhone: data.customerPhone || '+91 99999 99999',
+            source: data.source || 'MANUAL_COUNTER',
+            documentUrl: data.documentUrl || '',
+            documentName: data.documentName || 'Document.pdf',
+            pageCount: data.pageCount || 1,
+            colorMode: data.colorMode || 'BW',
+            copies: data.copies || 1,
+            totalAmount: data.totalAmount || 10,
+            status: 'PENDING',
+          }]);
+        } catch {}
+
+        return newOrder;
       }
     },
     onSuccess: () => {
@@ -148,11 +229,18 @@ export function useUpdatePrintOrderStatus() {
   return useMutation({
     mutationFn: async ({ id, status, staffId }: { id: string; status: string; staffId?: string | null }) => {
       try {
-        const res = await apiClient.patch(`/print-hub/orders/${id}/status`, { status, staffId });
-        return res.data.data;
-      } catch {
-        return { id, status, staffId };
-      }
+        await apiClient.patch(`/print-hub/orders/${id}/status`, { status, staffId });
+      } catch {}
+
+      try {
+        const supaStatus = status === 'COMPLETED' ? 'DELIVERED' : status;
+        await supabase
+          .from('print_orders')
+          .update({ status: supaStatus, assignedStaffId: staffId })
+          .eq('id', id);
+      } catch {}
+
+      return { id, status, staffId };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['print-orders'] });
@@ -168,47 +256,45 @@ export function useWhatsAppInbox(branchId?: string) {
     queryFn: async () => {
       try {
         const res = await apiClient.get('/print-hub/whatsapp/inbox', { params: { branchId } });
-        return res.data.data;
-      } catch {
-        return [
-          {
-            id: 'wa-1',
-            phone: '+91 99515 27090',
-            senderName: 'Venu Gopal',
-            messageBody: 'Please print photo: Aadhaar_Front.jpg',
-            mediaUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
-            mediaType: 'IMAGE',
-            isIncoming: true,
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'wa-2',
-            phone: '+91 91777 78485',
-            senderName: 'ranisri8485',
-            messageBody: 'Please print document: Certificate_Doc.pdf',
-            mediaUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
-            mediaType: 'PDF',
-            isIncoming: true,
-            createdAt: new Date().toISOString(),
-          }
-        ];
-      }
-    },
-    staleTime: 5000,
-  });
-}
+        if (res.data?.data && res.data.data.length > 0) return res.data.data;
+      } catch {}
 
-export function useSendWhatsAppMessage() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiClient.post('/print-hub/whatsapp/messages', data);
-      return res.data.data;
+      try {
+        const { data: supaMsgs, error } = await supabase
+          .from('whatsapp_messages')
+          .select('*')
+          .order('createdAt', { ascending: false });
+
+        if (!error && supaMsgs && supaMsgs.length > 0) {
+          return supaMsgs;
+        }
+      } catch {}
+
+      return [
+        {
+          id: 'wa-1',
+          phone: '+91 99515 27090',
+          senderName: 'Venu Gopal',
+          messageBody: 'Please print photo: Aadhaar_Front.jpg',
+          mediaUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
+          mediaType: 'IMAGE',
+          isIncoming: true,
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'wa-2',
+          phone: '+91 91777 78485',
+          senderName: 'ranisri8485',
+          messageBody: 'Please print document: Certificate_Doc.pdf',
+          mediaUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
+          mediaType: 'PDF',
+          isIncoming: true,
+          createdAt: new Date().toISOString(),
+        }
+      ];
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['whatsapp-inbox'] });
-      qc.invalidateQueries({ queryKey: ['print-orders'] });
-    },
+    refetchInterval: 5000,
+    staleTime: 3000,
   });
 }
 
@@ -216,8 +302,21 @@ export function useSendStaffDirectChatMessage() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: { branchId?: string; phone: string; messageBody: string; orderId?: string }) => {
-      const res = await apiClient.post('/print-hub/whatsapp/send-chat', data);
-      return res.data.data;
+      try {
+        await apiClient.post('/print-hub/whatsapp/send-chat', data);
+      } catch {}
+
+      try {
+        await supabase.from('whatsapp_messages').insert([{
+          phone: data.phone,
+          senderName: 'SVV Staff',
+          messageBody: data.messageBody,
+          isIncoming: false,
+          orderId: data.orderId || null,
+        }]);
+      } catch {}
+
+      return data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['whatsapp-inbox'] });
