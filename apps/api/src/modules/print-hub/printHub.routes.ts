@@ -72,7 +72,7 @@ router.post('/whatsapp/send-chat', async (req: AuthRequest, res: Response, next:
       phone,
       messageBody,
       orderId,
-      staffName: req.user!.name || 'SVV Print Desk',
+      staffName: (req.user as any)?.name || (req.user as any)?.email || 'SVV Print Desk',
     });
     res.json({ success: true, data });
   } catch (err) {
