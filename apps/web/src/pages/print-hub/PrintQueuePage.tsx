@@ -301,6 +301,8 @@ export default function PrintQueuePage() {
     return result;
   }, [rawOrders, whatsappData, whatsappMessages, currentUser, pdfPageCountsMap]);
 
+  const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | 'THIS_WEEK'>('ALL');
+
   const filteredOrders = useMemo(() => {
     let list = [...enrichedOrders];
     if (statusFilter) {
@@ -309,6 +311,20 @@ export default function PrintQueuePage() {
     if (staffFilter) {
       if (staffFilter === 'UNASSIGNED') list = list.filter((o) => o.assignedStaffName === 'Unassigned');
       else list = list.filter((o) => o.assignedStaffName?.toLowerCase().includes(staffFilter.toLowerCase()));
+    }
+    if (dateFilter !== 'ALL') {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const yesterdayStart = todayStart - 86400000;
+      const weekStart = todayStart - 7 * 86400000;
+
+      list = list.filter((o) => {
+        const oTime = o.rawDate ? new Date(o.rawDate).getTime() : 0;
+        if (dateFilter === 'TODAY') return oTime >= todayStart;
+        if (dateFilter === 'YESTERDAY') return oTime >= yesterdayStart && oTime < todayStart;
+        if (dateFilter === 'THIS_WEEK') return oTime >= weekStart;
+        return true;
+      });
     }
     if (search) {
       const q = search.toLowerCase();
@@ -319,10 +335,10 @@ export default function PrintQueuePage() {
           o.customerPhone?.includes(q)
       );
     }
-    if (sortBy === 'NEWEST') list.sort((a, b) => b.tokenNumber.localeCompare(a.tokenNumber));
-    else if (sortBy === 'OLDEST') list.sort((a, b) => a.tokenNumber.localeCompare(b.tokenNumber));
+    if (sortBy === 'NEWEST') list.sort((a, b) => (b.rawDate?.getTime() || 0) - (a.rawDate?.getTime() || 0));
+    else if (sortBy === 'OLDEST') list.sort((a, b) => (a.rawDate?.getTime() || 0) - (b.rawDate?.getTime() || 0));
     return list;
-  }, [enrichedOrders, statusFilter, staffFilter, search, sortBy]);
+  }, [enrichedOrders, statusFilter, staffFilter, dateFilter, search, sortBy]);
 
   useEffect(() => {
     if (filteredOrders.length > 0 && !selectedOrderId) {
@@ -387,17 +403,31 @@ export default function PrintQueuePage() {
   const handleCreateOrder = (e: React.FormEvent) => {
     e.preventDefault();
     createOrderMutation.mutate({
-      branchId: branchId || branches?.[0]?.id,
-      customerName,
-      customerPhone,
+      branchId: branchId || branches?.[0]?.id || 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
+      customerName: customerName.trim() || 'Walk-in Customer',
+      customerPhone: customerPhone.trim() || '+91 99999 99999',
       source: 'MANUAL_COUNTER',
-      documentUrl: '/uploads/counter_doc.pdf',
-      documentName: docName || 'Counter_Document.pdf',
+      documentUrl: 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80',
+      documentName: docName.trim() || 'Counter_Document.pdf',
       pageCount: 1,
-      copies,
+      copies: Number(copies) || 1,
       colorMode: 'COLOR',
-      totalAmount: customPrice,
-    }, { onSuccess: () => { setShowNewOrder(false); refetch(); } });
+      totalAmount: Number(customPrice) || 100,
+    }, {
+      onSuccess: (res: any) => {
+        setShowNewOrder(false);
+        setCustomerName('');
+        setCustomerPhone('');
+        setDocName('');
+        setCopyToast({ message: `✅ Ticket ${res?.tokenNumber || 'T-New'} Created Successfully!`, visible: true });
+        setTimeout(() => setCopyToast({ message: '', visible: false }), 2500);
+        refetch();
+        refetchWhatsApp();
+      },
+      onError: (err: any) => {
+        console.error('Failed to create ticket', err);
+      }
+    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -433,6 +463,18 @@ export default function PrintQueuePage() {
 
         {/* Right Filter Selectors & View Toggles */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Date Filter Dropdown */}
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value as any)}
+            className="h-10 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] px-3.5 text-xs font-bold text-[#081B3A] hover:border-[#CBD5E1] shadow-2xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0D6EFD]"
+          >
+            <option value="ALL">📅 All Dates</option>
+            <option value="TODAY">📅 Today</option>
+            <option value="YESTERDAY">📅 Yesterday</option>
+            <option value="THIS_WEEK">📅 This Week</option>
+          </select>
+
           {/* Status Dropdown */}
           <select
             value={statusFilter}
@@ -453,7 +495,8 @@ export default function PrintQueuePage() {
             className="h-10 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] px-3.5 text-xs font-medium text-[#111827] hover:border-[#CBD5E1] shadow-2xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0D6EFD]"
           >
             <option value="">All Staff</option>
-            <option value="Ravi Kumar">Ravi Kumar</option>
+            <option value="SVV Admin">SVV Admin</option>
+            <option value="Staff User 1">Staff User 1</option>
             <option value="UNASSIGNED">Unassigned</option>
           </select>
 

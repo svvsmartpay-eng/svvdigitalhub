@@ -37,11 +37,21 @@ export default function WhatsAppChatModal({
   // Normalize phone for comparison
   const cleanPhoneDigits = (customerPhone || '').replace(/[^0-9]/g, '');
 
-  // Filter conversation history for this customer's phone
+  // Filter conversation history for this customer's phone (excluding automated processing messages)
   const conversationMessages = React.useMemo(() => {
     if (!cleanPhoneDigits) return [];
     const filtered = (inboxMessages || []).filter((m: any) => {
       if (!m.phone) return false;
+      // Filter out automated bot/processing notifications
+      if (m.messageBody && (
+        m.messageBody.toLowerCase().includes('processing your document') ||
+        m.messageBody.toLowerCase().includes('processing order') ||
+        m.messageBody.toLowerCase().includes('processing...') ||
+        m.messageBody.toLowerCase().includes('we are processing') ||
+        m.messageBody.toLowerCase().includes('document received, processing')
+      )) {
+        return false;
+      }
       const mDigits = m.phone.replace(/[^0-9]/g, '');
       return (
         mDigits === cleanPhoneDigits ||

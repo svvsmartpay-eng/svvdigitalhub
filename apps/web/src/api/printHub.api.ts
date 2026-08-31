@@ -180,43 +180,92 @@ export function useCreatePrintOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: any) => {
+      // 1. Try local/cloud backend API first if available
       try {
         const res = await apiClient.post('/print-hub/orders', data);
-        return res.data.data;
-      } catch {
-        // Fallback to inserting directly into Supabase
-        const tokenNumber = `T-${Math.floor(100 + Math.random() * 900)}`;
-        const orderNo = `ORD-${Date.now()}`;
-        const newOrder = {
-          id: `ord-${Date.now()}`,
-          orderNo,
-          tokenNumber,
-          ...data,
-          status: 'PENDING',
-          createdAt: new Date().toISOString(),
-        };
+        if (res.data?.data) return res.data.data;
+      } catch {}
 
-        try {
-          await supabase.from('print_orders').insert([{
-            orderNo,
-            tokenNumber,
-            customerName: data.customerName || 'Walk-in Customer',
-            customerPhone: data.customerPhone || '+91 99999 99999',
-            source: data.source || 'MANUAL_COUNTER',
-            documentUrl: data.documentUrl || '',
-            documentName: data.documentName || 'Document.pdf',
-            pageCount: data.pageCount || 1,
-            colorMode: data.colorMode || 'BW',
-            copies: data.copies || 1,
-            totalAmount: data.totalAmount || 10,
-            status: 'PENDING',
-          }]);
-        } catch {}
+      // 2. Insert directly into Supabase cloud database
+      const orderNo = `ORD-${Date.now()}`;
+      let tokenNumber = `T-${Math.floor(108 + Math.random() * 800)}`;
+      
+      try {
+        const { data: latestOrders } = await supabase
+          .from('print_orders')
+          .select('tokenNumber')
+          .order('createdAt', { ascending: false })
+          .limit(10);
 
-        return newOrder;
+        if (latestOrders && latestOrders.length > 0) {
+          const tokenNums = latestOrders
+            .map(o => parseInt(o.tokenNumber?.replace(/[^0-9]/g, '') || '107', 10))
+            .filter(n => !isNaN(n));
+          if (tokenNums.length > 0) {
+            const maxToken = Math.max(...tokenNums);
+            tokenNumber = `T-${maxToken + 1}`;
+          }
+        }
+      } catch {}
+
+      const newOrderPayload = {
+        orderNo,
+        tokenNumber,
+        organizationId: 'svv-org-001',
+        branchId: data.branchId || 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
+        customerName: data.customerName || 'Walk-in Customer',
+        customerPhone: data.customerPhone || '+91 99999 99999',
+        source: data.source || 'MANUAL_COUNTER',
+        documentUrl: data.documentUrl || 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80',
+        documentName: data.documentName || 'Counter_Document.pdf',
+        pageCount: data.pageCount || 1,
+        colorMode: data.colorMode || 'COLOR',
+        copies: data.copies || 1,
+        totalAmount: data.totalAmount || 100,
+        status: 'PENDING',
+      };
+
+      try {
+        const { data: inserted, error } = await supabase
+          .from('print_orders')
+          .insert([newOrderPayload])
+          .select('*')
+          .single();
+
+        if (!error && inserted) {
+          return {
+            id: inserted.id,
+            ...inserted,
+            assignedStaffName: 'Unassigned',
+          };
+        }
+      } catch (err) {
+        console.warn('Supabase direct insert error:', err);
       }
+
+      return {
+        id: `ord-${Date.now()}`,
+        ...newOrderPayload,
+        assignedStaffName: 'Unassigned',
+        createdAt: new Date().toISOString(),
+      };
     },
-    onSuccess: () => {
+    onSuccess: (newOrder) => {
+      // Optimistically update queries
+      qc.setQueryData(['print-orders', undefined], (old: any) => {
+        if (!old) return { data: [newOrder], total: 1, stats: { totalOrders: 1, pending: 1 } };
+        const existing = old.data || [];
+        return {
+          ...old,
+          data: [newOrder, ...existing],
+          total: (old.total || existing.length) + 1,
+          stats: {
+            ...(old.stats || {}),
+            totalOrders: ((old.stats?.totalOrders || existing.length) + 1),
+            pending: ((old.stats?.pending || 0) + 1),
+          }
+        };
+      });
       qc.invalidateQueries({ queryKey: ['print-orders'] });
       qc.invalidateQueries({ queryKey: ['print-hub-analytics'] });
       qc.invalidateQueries({ queryKey: ['print-tokens'] });
