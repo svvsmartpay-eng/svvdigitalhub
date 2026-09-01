@@ -156,19 +156,21 @@ export default function WhatsAppGatewayModal({
   const handleMarkConnected = async () => {
     setLoading(true);
     try {
+      const waNumber = connectedPhone || '+91 77386 63866';
       await supabase
         .from('branch_whatsapp_configs')
-        .update({
+        .upsert({
+          branchId,
+          organizationId: 'svv-org-001',
           status: 'ACTIVE',
-          whatsappNumber: connectedPhone,
+          whatsappNumber: waNumber,
           updatedAt: new Date().toISOString(),
-        })
-        .eq('branchId', branchId);
+        }, { onConflict: 'branchId' });
 
       try {
-        await apiClient.post(`/print-hub/whatsapp/configs/${branchId}`, {
+        await apiClient.put(`/print-hub/whatsapp/configs/${branchId}`, {
           status: 'ACTIVE',
-          whatsappNumber: connectedPhone,
+          whatsappNumber: waNumber,
         });
       } catch {}
 

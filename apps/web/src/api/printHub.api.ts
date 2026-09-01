@@ -404,26 +404,35 @@ export function useBranchWhatsAppConfigs() {
       } catch {}
 
       try {
-        const { data: supaConfigs, error } = await supabase
-          .from('branch_whatsapp_configs')
-          .select('*, branch:branches(name, code, city)');
+        const { data: supaBranches } = await supabase.from('branches').select('*');
+        const { data: supaConfigs } = await supabase.from('branch_whatsapp_configs').select('*');
 
-        if (!error && supaConfigs && supaConfigs.length > 0) {
-          return supaConfigs.map((c: any) => ({
-            id: c.id,
-            branchId: c.branchId,
-            branchName: c.branch?.name || (c.branchId === 'f5abaacc-d2b6-4591-91fb-314b2188e18c' ? 'SVV Main Hub' : 'Branch 2'),
-            branchCode: c.branch?.code || (c.branchId === 'f5abaacc-d2b6-4591-91fb-314b2188e18c' ? 'SVV-1' : 'SVV-2'),
-            branchCity: c.branch?.city || 'Isnapur',
-            whatsappNumber: c.whatsappNumber || '+91 77386 63866',
-            phoneNumber: c.whatsappNumber || '+91 77386 63866',
-            displayName: c.displayName || 'SVV Print Desk',
-            status: c.status || 'ACTIVE',
-            isEnabled: c.status === 'ACTIVE',
-            welcomeMessage: c.welcomeMessage || 'Welcome to SVV Print Desk! Send your PDF or image documents here for instant printing.',
-          }));
+        const activeBranches = (supaBranches || []).filter((b: any) => b.isActive !== false);
+
+        if (activeBranches.length > 0) {
+          return activeBranches.map((b: any) => {
+            const cfg = (supaConfigs || []).find((c: any) => c.branchId === b.id);
+            const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || (b.code === 'SVV-1' ? '+91 77386 63866' : '+91 99515 27090');
+            const city = b.city || (b.code === 'SVV-1' ? 'Isnapur' : 'Patancheru');
+
+            return {
+              id: cfg?.id || `cfg-${b.id}`,
+              branchId: b.id,
+              branchName: b.name || (b.code === 'SVV-1' ? 'SVV Main Hub' : 'SVV Digital Desk'),
+              branchCode: b.code || (b.name?.includes('1') ? 'SVV-1' : 'SVV-2'),
+              branchCity: city,
+              whatsappNumber: waNum,
+              phoneNumber: waNum,
+              displayName: cfg?.displayName || `${b.name} Print Desk`,
+              status: cfg?.status || 'ACTIVE',
+              isEnabled: cfg?.status !== 'INACTIVE',
+              welcomeMessage: cfg?.welcomeMessage || `Welcome to ${b.name} Print Desk! Send your PDF or image documents here for instant printing.`,
+            };
+          });
         }
-      } catch {}
+      } catch (e) {
+        console.warn('Supabase fetch branch configs error:', e);
+      }
 
       return [
         {
@@ -442,15 +451,15 @@ export function useBranchWhatsAppConfigs() {
         {
           id: 'cfg-2',
           branchId: 'branch-2',
-          branchName: 'Branch 2',
+          branchName: 'SVV Digital Desk',
           branchCode: 'SVV-2',
           branchCity: 'Patancheru',
           whatsappNumber: '+91 99515 27090',
           phoneNumber: '+91 99515 27090',
-          displayName: 'SVV Branch 2 Print Desk',
+          displayName: 'SVV Digital Desk',
           status: 'ACTIVE',
           isEnabled: true,
-          welcomeMessage: 'Welcome to SVV Branch 2 Print Desk! Send your PDF or image documents here for instant printing.',
+          welcomeMessage: 'Welcome to SVV Digital Desk! Send your PDF or image documents here for instant printing.',
         }
       ];
     },
