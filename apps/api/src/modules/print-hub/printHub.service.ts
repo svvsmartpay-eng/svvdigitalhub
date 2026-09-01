@@ -297,131 +297,130 @@ export async function processIncomingWhatsAppMessage(params: {
     },
   });
 
-  let createdOrder: any = null;
-  let autoReplyText = '';
-  const now = new Date();
-  const receivedTime = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+  // 1. Check if customer already has an active order today (grouping by 10-digit phone)
+  const activeOrdersList = await prisma.printOrder.findMany({
+    where: {
+      organizationId: orgId,
+      branchId,
+      status: { in: ['PENDING', 'PRINTING', 'READY_FOR_DELIVERY'] },
+      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  // If a document/image was sent, group into existing token or generate new token!
-  if (params.mediaUrl) {
-    const isPVC = messageText.toLowerCase().includes('pvc') || messageText.toLowerCase().includes('card');
-    const isPhoto = messageText.toLowerCase().includes('photo') || messageText.toLowerCase().includes('passport');
-    const defaultPrice = isPVC ? 100 : (isPhoto ? 50 : 20);
-    const rawDigits10 = digits.slice(-10);
+  const existingActiveOrder = activeOrdersList.find((ord) => {
+    const ordDigits = (ord.customerPhone || '').replace(/[^0-9]/g, '');
+    return ordDigits.slice(-10) === rawDigits10;
+  });
 
-    // 1. Check if customer already has an active order today (grouping by 10-digit phone)
-    const activeOrdersList = await prisma.printOrder.findMany({
+  if (existingActiveOrder) {
+    // Append file to existing customer token
+    const updatedDocName = params.mediaUrl && existingActiveOrder.documentName
+      ? `${existingActiveOrder.documentName}, ${docName}`
+      : (existingActiveOrder.documentName || docName);
+
+    createdOrder = await prisma.printOrder.update({
+      where: { id: existingActiveOrder.id },
+      data: {
+        documentName: updatedDocName,
+        documentUrl: params.mediaUrl || existingActiveOrder.documentUrl,
+        pageCount: params.mediaUrl ? ((existingActiveOrder.pageCount || 1) + 1) : existingActiveOrder.pageCount,
+        totalAmount: params.mediaUrl ? ((existingActiveOrder.totalAmount || 0) + defaultPrice) : existingActiveOrder.totalAmount,
+      },
+    });
+
+    autoReplyText = `Your document received successfully.\nToken No: ${existingActiveOrder.tokenNumber}\nReceived Time: ${receivedTime}`;
+  } else {
+    // Generate new sequential token
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const countToday = await prisma.printOrder.count({
       where: {
         organizationId: orgId,
-        branchId,
-        status: { in: ['PENDING', 'PRINTING', 'READY_FOR_DELIVERY'] },
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
       },
-      orderBy: { createdAt: 'desc' },
     });
 
-    const existingActiveOrder = activeOrdersList.find((ord) => {
-      const ordDigits = (ord.customerPhone || '').replace(/[^0-9]/g, '');
-      return ordDigits.slice(-10) === rawDigits10;
+    const tokenNumber = `T-${100 + (countToday % 900) + 1}`;
+    const orderNo = `PRN-${dateStr}-${String(countToday + 1).padStart(3, '0')}`;
+
+    createdOrder = await prisma.printOrder.create({
+      data: {
+        organizationId: orgId,
+        branchId,
+        orderNo,
+        tokenNumber,
+        customerName,
+        customerPhone: formattedPhone,
+        source: 'WHATSAPP',
+        documentUrl: params.mediaUrl || 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80',
+        documentName: docName,
+        pageCount: 1,
+        copies: 1,
+        colorMode: isPVC || isPhoto ? 'COLOR' : 'BW',
+        paperSize: isPVC ? 'PVC Plastic' : (isPhoto ? 'Glossy Photo' : 'A4'),
+        totalAmount: defaultPrice,
+        status: 'PENDING',
+        notes: messageText,
+      },
     });
 
-    if (existingActiveOrder) {
-      // Append file to existing customer token
-      const updatedDocName = existingActiveOrder.documentName
-        ? `${existingActiveOrder.documentName}, ${docName}`
-        : docName;
+    autoReplyText = `Your document received successfully.\nToken No: ${tokenNumber}\nReceived Time: ${receivedTime}`;
+  }
 
-      createdOrder = await prisma.printOrder.update({
-        where: { id: existingActiveOrder.id },
-        data: {
-          documentName: updatedDocName,
-          pageCount: (existingActiveOrder.pageCount || 1) + 1,
-          totalAmount: (existingActiveOrder.totalAmount || 0) + defaultPrice,
-        },
-      });
+  // Link message to order
+  if (createdOrder) {
+    await prisma.whatsAppMessage.update({
+      where: { id: incomingMsg.id },
+      data: { orderId: createdOrder.id },
+    });
+  }
 
-      autoReplyText = `Your document received successfully.\nToken No: ${existingActiveOrder.tokenNumber}\nReceived Time: ${receivedTime}`;
-    } else {
-      // Generate new sequential token
-      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-      const countToday = await prisma.printOrder.count({
-        where: {
-          organizationId: orgId,
-          createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-        },
-      });
+  // Dual-write sync directly to Supabase cloud database
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseCloud = createClient(
+      'https://kxacmxxktuvildjjvnjs.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74'
+    );
 
-      const tokenNumber = `T-${100 + (countToday % 900) + 1}`;
-      const orderNo = `PRN-${dateStr}-${String(countToday + 1).padStart(3, '0')}`;
-
-      createdOrder = await prisma.printOrder.create({
-        data: {
-          organizationId: orgId,
-          branchId,
-          orderNo,
-          tokenNumber,
-          customerName,
-          customerPhone: formattedPhone,
-          source: 'WHATSAPP',
-          documentUrl: params.mediaUrl,
-          documentName: docName,
-          pageCount: 1,
-          copies: 1,
-          colorMode: isPVC || isPhoto ? 'COLOR' : 'BW',
-          paperSize: isPVC ? 'PVC Plastic' : (isPhoto ? 'Glossy Photo' : 'A4'),
-          totalAmount: defaultPrice,
-          status: 'PENDING',
-          notes: messageText,
-        },
-      });
-
-      autoReplyText = `Your document received successfully.\nToken No: ${tokenNumber}\nReceived Time: ${receivedTime}`;
-    }
-
-    // Link message to order
     if (createdOrder) {
-      await prisma.whatsAppMessage.update({
-        where: { id: incomingMsg.id },
-        data: { orderId: createdOrder.id },
-      });
+      await supabaseCloud.from('print_orders').upsert([{
+        id: createdOrder.id,
+        orderNo: createdOrder.orderNo,
+        tokenNumber: createdOrder.tokenNumber,
+        organizationId: createdOrder.organizationId,
+        branchId: createdOrder.branchId,
+        customerName: createdOrder.customerName,
+        customerPhone: createdOrder.customerPhone,
+        source: createdOrder.source,
+        documentUrl: createdOrder.documentUrl,
+        documentName: createdOrder.documentName,
+        pageCount: createdOrder.pageCount,
+        colorMode: createdOrder.colorMode,
+        copies: createdOrder.copies,
+        totalAmount: createdOrder.totalAmount,
+        status: createdOrder.status,
+        createdAt: createdOrder.createdAt,
+        updatedAt: new Date().toISOString(),
+      }]);
     }
 
-    // Dual-write sync directly to Supabase cloud database
-    try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabaseCloud = createClient(
-        'https://kxacmxxktuvildjjvnjs.supabase.co',
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74'
-      );
-
-      if (createdOrder) {
-        await supabaseCloud.from('print_orders').upsert([{
-          id: createdOrder.id,
-          orderNo: createdOrder.orderNo,
-          tokenNumber: createdOrder.tokenNumber,
-          organizationId: createdOrder.organizationId,
-          branchId: createdOrder.branchId,
-          customerName: createdOrder.customerName,
-          customerPhone: createdOrder.customerPhone,
-          source: createdOrder.source,
-          documentUrl: createdOrder.documentUrl,
-          documentName: createdOrder.documentName,
-          pageCount: createdOrder.pageCount,
-          colorMode: createdOrder.colorMode,
-          copies: createdOrder.copies,
-          totalAmount: createdOrder.totalAmount,
-          status: createdOrder.status,
-          createdAt: createdOrder.createdAt,
-          updatedAt: new Date().toISOString(),
-        }]);
-      }
-
-      await supabaseCloud.from('whatsapp_messages').upsert([{
-        id: incomingMsg.id,
-        organizationId: incomingMsg.organizationId,
-        branchId: incomingMsg.branchId,
-        phone: incomingMsg.phone,
-        senderName: incomingMsg.senderName,
+    await supabaseCloud.from('whatsapp_messages').upsert([{
+      id: incomingMsg.id,
+      organizationId: incomingMsg.organizationId,
+      branchId: incomingMsg.branchId,
+      phone: incomingMsg.phone,
+      senderName: incomingMsg.senderName,
+      messageBody: incomingMsg.messageBody,
+      mediaUrl: incomingMsg.mediaUrl,
+      mediaType: incomingMsg.mediaType,
+      isIncoming: true,
+      orderId: createdOrder?.id || null,
+      createdAt: incomingMsg.createdAt,
+    }]);
+  } catch (supaSyncErr) {
+    console.warn('Supabase sync warning:', supaSyncErr);
+  }enderName,
         messageBody: incomingMsg.messageBody,
         mediaUrl: incomingMsg.mediaUrl,
         mediaType: incomingMsg.mediaType,

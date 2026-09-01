@@ -31,13 +31,13 @@ export default function PrintQueuePage() {
   usePrintHubRealtimeSync();
   const { data: currentUser } = useCurrentUser();
   const { data: branches } = useBranches();
-  const [selectedBranch, setSelectedBranch] = useState('Isnapur');
+  const [selectedBranch, setSelectedBranch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [staffFilter, setStaffFilter] = useState('');
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'TOKEN'>('NEWEST');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'GRID' | 'SPLIT'>('GRID');
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>('T-181');
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedDocIndex, setSelectedDocIndex] = useState<number>(0);
   const [previewZoom, setPreviewZoom] = useState<number>(100);
   const [previewRotation, setPreviewRotation] = useState<number>(0);
@@ -49,7 +49,7 @@ export default function PrintQueuePage() {
   const [lastActivityTime, setLastActivityTime] = useState<number>(Date.now());
 
   const { data: response, isLoading, refetch } = usePrintOrders({
-    branchId: selectedBranch && selectedBranch !== 'Isnapur' ? selectedBranch : undefined,
+    branchId: selectedBranch || undefined,
     status: statusFilter || undefined,
     search: search || undefined,
   });
@@ -57,6 +57,15 @@ export default function PrintQueuePage() {
   const { data: whatsappData, refetch: refetchWhatsApp } = useWhatsAppInbox(selectedBranch || undefined);
   const rawOrders: any[] = response?.data || [];
   const whatsappMessages: any[] = whatsappData?.messages || [];
+
+  // Live real-time polling auto-refetch every 2.5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refetch();
+      refetchWhatsApp();
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [refetch, refetchWhatsApp]);
 
   const updateStatusMutation = useUpdatePrintOrderStatus();
   const createOrderMutation = useCreatePrintOrder();
