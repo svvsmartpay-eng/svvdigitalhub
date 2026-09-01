@@ -9,7 +9,7 @@ import {
   X, User, Building2, Shield, Calendar, Phone, Mail,
   Briefcase, UserCheck, AlertCircle, Sparkles, Check, KeyRound
 } from 'lucide-react';
-import { useUsers, useRoles } from '@/api/users.api';
+import { useUsers, useRoles, useCreateUser, useUpdateUser } from '@/api/users.api';
 import { useBranches } from '@/api/branches.api';
 
 interface EditUserModalProps {
@@ -19,10 +19,12 @@ interface EditUserModalProps {
 
 export default function EditUserModal({ user, onClose }: EditUserModalProps) {
   const isCreate = !user || !user.id;
-  const queryClient = useQueryClient();
   const { data: allUsers } = useUsers();
   const { data: roles } = useRoles();
   const { data: branches } = useBranches();
+
+  const createUserMutation = useCreateUser();
+  const updateUserMutation = useUpdateUser();
 
   const [formData, setFormData] = useState({
     employeeId: '',
@@ -77,27 +79,7 @@ export default function EditUserModal({ user, onClose }: EditUserModalProps) {
     }
   }, [user]);
 
-  const mutation = useMutation({
-    mutationFn: async (payload: any) => {
-      if (isCreate) {
-        const res = await apiClient.post('/users', payload);
-        return res.data;
-      } else {
-        const res = await apiClient.put(`/users/${user.id}`, payload);
-        return res.data;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['user'] });
-      onClose();
-    },
-    onError: (err: any) => {
-      setError(err?.response?.data?.error || err?.message || `Failed to ${isCreate ? 'create' : 'update'} user`);
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -110,7 +92,16 @@ export default function EditUserModal({ user, onClose }: EditUserModalProps) {
       return;
     }
 
-    mutation.mutate(formData);
+    try {
+      if (isCreate) {
+        await createUserMutation.mutateAsync(formData);
+      } else {
+        await updateUserMutation.mutateAsync({ id: user.id, data: formData });
+      }
+      onClose();
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || `Failed to ${isCreate ? 'create' : 'update'} user`);
+    }
   };
 
   const toggleBranch = (branchId: string) => {
@@ -429,7 +420,7 @@ export default function EditUserModal({ user, onClose }: EditUserModalProps) {
                 type="submit"
                 size="sm"
                 className="bg-[#1e3a5f] hover:bg-[#172d4a] text-white text-xs font-semibold px-5 h-9"
-                loading={mutation.isPending}
+                loading={createUserMutation.isPending || updateUserMutation.isPending}
               >
                 <Check className="w-3.5 h-3.5 mr-1" />
                 {isCreate ? 'Create Team Member' : 'Save Changes'}

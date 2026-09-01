@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import PageHeader from '@/components/shared/PageHeader';
-import { useUsers, useResetPassword, useRoles } from '@/api/users.api';
+import { useUsers, useResetPassword, useRoles, useDeleteUser } from '@/api/users.api';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,7 @@ import {
   AlertCircle, Settings, Users, Shield, UserPlus, KeyRound,
   Building2, Phone, Mail, CheckCircle2, UserCheck, Search,
   Calendar, Check, User as UserIcon, RefreshCw, Sparkles,
-  Printer, MessageSquare, ToggleLeft, ToggleRight, CheckSquare
+  Printer, MessageSquare, ToggleLeft, ToggleRight, CheckSquare, Trash2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import EditUserModal from './EditUserModal';
@@ -39,6 +39,16 @@ export default function SettingsPage() {
   });
   const { data: roles } = useRoles();
   const resetPassword = useResetPassword();
+  const deleteUserMutation = useDeleteUser();
+
+  const handleDeleteUser = async (targetUser: any) => {
+    if (!confirm(`Are you sure you want to remove team member "${targetUser.name}" (${targetUser.email})?`)) return;
+    try {
+      await deleteUserMutation.mutateAsync(targetUser.id);
+    } catch (err: any) {
+      alert(`Failed to delete user: ${err.message}`);
+    }
+  };
 
   // Plugins & Feature Toggles
   const { data: pluginSettings } = usePluginSettings();
@@ -275,12 +285,23 @@ export default function SettingsPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 text-[11px] text-gray-500 hover:text-red-700"
+                                className="h-7 text-[11px] text-gray-500 hover:text-blue-700"
                                 title="Reset Password to Default"
                                 onClick={() => handleResetPassword(u)}
                               >
                                 <KeyRound className="w-3.5 h-3.5" />
                               </Button>
+                              {!isMe && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-[11px] text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  title="Delete Team Member"
+                                  onClick={() => handleDeleteUser(u)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>
