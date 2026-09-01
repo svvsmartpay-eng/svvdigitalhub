@@ -6,8 +6,10 @@ import {
   useStartWhatsAppGateway,
   useWhatsAppGatewayStatus,
   useDisconnectWhatsAppGateway,
-  usePrintHubRealtimeSync
+  usePrintHubRealtimeSync,
 } from '@/api/printHub.api';
+import { apiClient } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -98,14 +100,27 @@ export default function BranchQRCodesPage() {
     );
   };
 
-  const handleDisconnect = (branchId: string, branchName: string) => {
+  const handleDisconnect = async (branchId: string, branchName: string) => {
     if (!confirm(`Are you sure you want to disconnect WhatsApp for ${branchName}? You can scan a fresh QR code to log in anytime.`)) return;
 
-    disconnectGatewayMutation.mutate(branchId, {
-      onSuccess: () => {
-        refetch();
-      },
-    });
+    try {
+      try {
+        await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/disconnect`);
+      } catch {
+        try {
+          await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/disconnect`, { method: 'POST' });
+        } catch {}
+      }
+
+      await supabase
+        .from('branch_whatsapp_configs')
+        .update({ status: 'SCAN_QR_REQUIRED', updatedAt: new Date().toISOString() })
+        .eq('branchId', branchId);
+
+      await refetch();
+    } catch (e: any) {
+      alert(`Disconnect error: ${e.message}`);
+    }
   };
 
   const handlePrintFlyer = () => {

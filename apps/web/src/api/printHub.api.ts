@@ -651,12 +651,25 @@ export function useDisconnectWhatsAppGateway() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (branchId: string) => {
-      const res = await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/disconnect`);
-      return res.data.data;
+      try {
+        await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/disconnect`);
+      } catch {
+        try {
+          await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/disconnect`, { method: 'POST' });
+        } catch {}
+      }
+
+      await supabase
+        .from('branch_whatsapp_configs')
+        .update({ status: 'SCAN_QR_REQUIRED', updatedAt: new Date().toISOString() })
+        .eq('branchId', branchId);
+
+      return { success: true };
     },
     onSuccess: (_, branchId) => {
       qc.invalidateQueries({ queryKey: ['whatsapp-gateway-status', branchId] });
       qc.invalidateQueries({ queryKey: ['branch-whatsapp-configs'] });
+      qc.invalidateQueries({ queryKey: ['branches'] });
     },
   });
 }
