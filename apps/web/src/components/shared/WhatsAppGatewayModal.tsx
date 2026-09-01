@@ -152,6 +152,35 @@ export default function WhatsAppGatewayModal({
     }
   };
 
+  // Manual confirm / Mark connected in case scan completes on phone
+  const handleMarkConnected = async () => {
+    setLoading(true);
+    try {
+      await supabase
+        .from('branch_whatsapp_configs')
+        .update({
+          status: 'ACTIVE',
+          whatsappNumber: connectedPhone,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('branchId', branchId);
+
+      try {
+        await apiClient.post(`/print-hub/whatsapp/configs/${branchId}`, {
+          status: 'ACTIVE',
+          whatsappNumber: connectedPhone,
+        });
+      } catch {}
+
+      setGatewayStatus('CONNECTED');
+      if (onOrderCreated) onOrderCreated();
+    } catch (e: any) {
+      setErrorPopup(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Reconnect / Start Baileys Gateway Socket
   const handleStartGateway = async () => {
     setLoading(true);
@@ -366,17 +395,28 @@ export default function WhatsAppGatewayModal({
                   </button>
                 </div>
 
-                {/* Direct Gateway Trigger */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleStartGateway}
-                  disabled={loading}
-                  className="mt-4 text-[11px] font-bold text-[#00a884] border-[#00a884]/40 hover:bg-[#00a884]/10 rounded-xl cursor-pointer"
-                >
-                  <RefreshCw className={`w-3 h-3 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-                  Request Fresh WhatsApp Web Token
-                </Button>
+                {/* Action Buttons: Refresh QR & Confirm Scanned */}
+                <div className="flex flex-col sm:flex-row gap-2 mt-4 justify-center">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleStartGateway}
+                    disabled={loading}
+                    className="text-[11px] font-bold text-[#00a884] border-[#00a884]/40 hover:bg-[#00a884]/10 rounded-xl cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+                    Refresh QR Token
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleMarkConnected}
+                    disabled={loading}
+                    className="text-[11px] font-bold bg-[#00a884] hover:bg-[#02906f] text-white rounded-xl cursor-pointer shadow-xs"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                    Confirm Scanned & Linked
+                  </Button>
+                </div>
               </div>
 
             </div>
