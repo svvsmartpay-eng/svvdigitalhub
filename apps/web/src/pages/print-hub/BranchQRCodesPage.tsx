@@ -125,162 +125,33 @@ export default function BranchQRCodesPage() {
 
   const handlePrintFlyer = () => {
     window.print();
-  };
-
-  return (
+  };  return (
     <div className="space-y-6 font-sans">
       {/* ── Top Bar ──────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs">
         <div>
-          <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-            <Phone className="w-4 h-4 text-[#081B3A]" /> Branch WhatsApp Multi-Device Gateway & QR Posters
-          </h2>
-          <p className="text-[11px] text-gray-500">Scan WhatsApp Web QR code to connect your real branch phone numbers directly without Meta approvals</p>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Printer className="w-5 h-5 text-[#0D6EFD]" /> Counter QR Posters & Standee Generator
+            </h2>
+            <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full border border-blue-200">
+              For Customers
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Print and place these QR posters on your shop counters. Customers scan with any smartphone camera to send files directly to your WhatsApp.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => refetch()}
-            className="text-xs h-8 text-gray-600 bg-white border-gray-300 shadow-2xs cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh
-          </Button>
-
+        <div className="flex items-center gap-2.5">
           <Button
             size="sm"
             onClick={handlePrintFlyer}
-            className="bg-[#081B3A] hover:bg-[#06142c] text-white text-xs font-semibold h-8 cursor-pointer"
+            className="bg-[#081B3A] hover:bg-[#06142c] text-white text-xs font-bold h-9 px-4 rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
           >
-            <Printer className="w-3.5 h-3.5 mr-1" /> Print Selected Poster
+            <Printer className="w-4 h-4" /> Print Counter Poster
           </Button>
         </div>
-      </div>
-
-      {/* ── 1. Branch WhatsApp Connection & Device Link Matrix ─────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-2xs overflow-hidden">
-        <div className="p-4 border-b border-gray-100 bg-gray-50/70 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-              <Smartphone className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-gray-900">Branch WhatsApp Phone Link (WhatsApp Web Engine)</h3>
-              <p className="text-[10px] text-gray-500">Open WhatsApp on your branch phone → Tap 'Linked Devices' → Scan QR on screen to connect live</p>
-            </div>
-          </div>
-          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
-            Multi-Device Active
-          </span>
-        </div>
-
-        {isLoading ? (
-          <div className="p-12 text-center"><LoadingSpinner size="md" /></div>
-        ) : (branchConfigs || []).length === 0 ? (
-          <div className="p-8 text-center text-xs text-gray-400">No active branches found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50/50 text-gray-500 font-semibold uppercase tracking-wider text-[10px]">
-                  <th className="px-3.5 py-3">Branch</th>
-                  <th className="px-3.5 py-3">Connected Mobile Number</th>
-                  <th className="px-3.5 py-3">Bot Name</th>
-                  <th className="px-3.5 py-3">Live Phone Link Status</th>
-                  <th className="px-3.5 py-3 text-right">Device Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 font-sans">
-                {(branchConfigs || []).map((cfg: any) => (
-                  <tr
-                    key={cfg.branchId}
-                    className={`hover:bg-gray-50/80 transition-colors ${
-                      activeBranch?.branchId === cfg.branchId ? 'bg-blue-50/40' : ''
-                    }`}
-                  >
-                    <td className="px-3.5 py-3 whitespace-nowrap">
-                      <span className="font-bold text-gray-900 block">{cfg.branchName || 'Branch'}</span>
-                      <span className="text-[10px] text-gray-400 font-mono">Code: {cfg.branchCode || 'SVV-1'} · {cfg.branchCity || 'Isnapur'}</span>
-                    </td>
-
-                    <td className="px-3.5 py-3 whitespace-nowrap font-mono font-bold text-emerald-800">
-                      <div className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span>{cfg.whatsappNumber || cfg.phoneNumber || '+91 77386 63866'}</span>
-                      </div>
-                    </td>
-
-                    <td className="px-3.5 py-3 whitespace-nowrap text-gray-700 font-medium">
-                      {cfg.displayName || `${cfg.branchName} Print Desk`}
-                    </td>
-
-                    <td className="px-3.5 py-3 whitespace-nowrap">
-                      {cfg.status === 'ACTIVE' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                          Connected & Online
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 w-fit flex items-center gap-1">
-                          <Radio className="w-3 h-3 text-amber-600" /> Disconnected / Needs Scan
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="px-3.5 py-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* 1. Fresh Login / Scan QR */}
-                        <Button
-                          size="sm"
-                          onClick={() => handleOpenPairingModal(cfg)}
-                          className="bg-[#198754] hover:bg-[#157347] text-white text-xs h-7 px-3 font-bold shadow-xs cursor-pointer flex items-center gap-1"
-                          title="Scan QR Code to login/re-link WhatsApp"
-                        >
-                          <QrCode className="w-3.5 h-3.5" /> Fresh Login / QR
-                        </Button>
-
-                        {/* 2. Edit Number / Settings */}
-                        <Button
-                          size="sm"
-                          onClick={() => handleOpenEditModal(cfg)}
-                          className="bg-[#0D6EFD] hover:bg-[#0b5ed7] text-white text-xs h-7 px-2.5 font-bold shadow-xs cursor-pointer flex items-center gap-1"
-                          title="Edit connected mobile number or greetings"
-                        >
-                          <Edit3 className="w-3 h-3" /> Edit Number
-                        </Button>
-
-                        {/* 3. Disconnect */}
-                        <Button
-                          size="sm"
-                          onClick={() => handleDisconnect(cfg.branchId, cfg.branchName)}
-                          className="bg-[#DC3545] hover:bg-[#bb2d3b] text-white text-xs h-7 px-2 font-bold shadow-xs cursor-pointer flex items-center gap-1"
-                          title="Disconnect active WhatsApp session"
-                        >
-                          <LogOut className="w-3 h-3" /> Disconnect
-                        </Button>
-
-                        {/* 4. View Poster */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSelectedBranchId(cfg.branchId)}
-                          className={`text-xs h-7 px-2.5 cursor-pointer font-bold ${
-                            activeBranch?.branchId === cfg.branchId
-                              ? 'bg-[#081B3A] text-white border-[#081B3A]'
-                              : 'text-gray-700 bg-white border-gray-300'
-                          }`}
-                        >
-                          <Printer className="w-3 h-3 mr-1" /> View Poster
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       {/* ── 2. Official WhatsApp Gateway Pairing Modal ────────────────────────── */}
