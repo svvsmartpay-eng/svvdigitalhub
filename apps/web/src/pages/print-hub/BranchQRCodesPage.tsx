@@ -11,6 +11,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
+import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
 import {
   QrCode, Printer, Download, MessageSquare,
   Building2, Sparkles, Phone, CheckCircle2,
@@ -53,15 +54,12 @@ export default function BranchQRCodesPage() {
   const activeBranch = (branchConfigs || []).find((b: any) => b.branchId === selectedBranchId) || branchConfigs?.[0];
 
   const whatsappNumber = activeBranch?.whatsappNumber || activeBranch?.phoneNumber || '+91 77386 63866';
-  const cleanNumber = whatsappNumber.replace(/[^0-9]/g, '');
-  const qrLink = `https://wa.me/${cleanNumber}?text=Hi%20SVV%20${encodeURIComponent(activeBranch?.branchName || 'Print Desk')},%20I%20want%20to%20print%20a%20document`;
+  const rawDigits = whatsappNumber.replace(/[^0-9]/g, '');
+  const cleanNumber = rawDigits.startsWith('91') && rawDigits.length === 12 ? rawDigits : rawDigits.length === 10 ? `91${rawDigits}` : rawDigits;
+  const qrLink = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(`Hi SVV ${activeBranch?.branchName || 'Print Desk'}, I want to print a document.`)}`;
 
   const handleOpenPairingModal = (b: any) => {
     setPairingBranch(b);
-    startGatewayMutation.mutate(b.branchId);
-    const waNumberClean = (b.whatsappNumber || '+91 77386 63866').replace(/[^0-9]/g, '');
-    const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
-    setClientPairingQR(pairText);
   };
 
   const handleOpenEditModal = (b: any) => {
@@ -270,69 +268,17 @@ export default function BranchQRCodesPage() {
         )}
       </div>
 
-      {/* ── 2. Live WhatsApp Web QR Pairing / Fresh Login Modal ────────────────── */}
+      {/* ── 2. Official WhatsApp Gateway Pairing Modal ────────────────────────── */}
       {pairingBranch && (
-        <div className="fixed inset-0 bg-black/65 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150 font-sans text-center">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
-                <Smartphone className="w-4 h-4" /> Link Branch WhatsApp ({pairingBranch.branchName})
-              </div>
-              <button onClick={() => setPairingBranch(null)} className="text-gray-400 hover:text-gray-600 text-sm cursor-pointer">✕</button>
-            </div>
-
-            {/* Instruction Steps */}
-            <div className="bg-emerald-50/80 p-3.5 rounded-2xl border border-emerald-200 text-left space-y-1.5 text-xs text-emerald-950">
-              <h4 className="font-bold text-emerald-900 text-xs flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> How to Link (10 Seconds):
-              </h4>
-              <ol className="text-[11px] pl-4 list-decimal space-y-1 opacity-90 leading-tight">
-                <li>Open <strong>WhatsApp</strong> on your branch phone.</li>
-                <li>Tap <strong>⋮ Menu (or Settings) → Linked Devices</strong>.</li>
-                <li>Tap <strong>"Link a Device"</strong> and scan the QR code below.</li>
-              </ol>
-            </div>
-
-            {/* Live Pairing QR Display */}
-            <div className="p-4 bg-gray-50 rounded-2xl border-2 border-dashed border-emerald-400 inline-block mx-auto">
-              {generatingQR ? (
-                <div className="py-12 px-8">
-                  <LoadingSpinner size="md" />
-                  <p className="text-xs text-gray-500 mt-2">Generating Live QR...</p>
-                </div>
-              ) : (
-                <div className="py-2 space-y-3">
-                  <div className="p-3 bg-white rounded-xl shadow-md border border-gray-200 inline-block">
-                    <QRCodeSVG
-                      value={clientPairingQR || qrLink}
-                      size={195}
-                      level="H"
-                      includeMargin={false}
-                    />
-                  </div>
-                  <div className="flex items-center justify-center gap-2 text-xs text-emerald-800 font-semibold bg-emerald-50 py-1.5 px-3 rounded-full border border-emerald-200">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Point phone camera at this QR code</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center gap-2 pt-2 border-t border-gray-100">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleOpenPairingModal(pairingBranch)}
-                className="text-xs cursor-pointer font-bold"
-              >
-                <RefreshCw className="w-3 h-3 mr-1" /> Refresh QR
-              </Button>
-              <Button size="sm" onClick={() => setPairingBranch(null)} className="text-xs bg-[#081B3A] text-white cursor-pointer font-bold">
-                Done / Close
-              </Button>
-            </div>
-          </div>
-        </div>
+        <WhatsAppGatewayModal
+          open={Boolean(pairingBranch)}
+          branchId={pairingBranch.branchId}
+          onClose={() => {
+            setPairingBranch(null);
+            refetch();
+          }}
+          onOrderCreated={refetch}
+        />
       )}
 
       {/* ── 3. Edit Mobile Number & Bot Settings Modal ─────────────────────────── */}
