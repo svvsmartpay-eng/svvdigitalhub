@@ -25,6 +25,7 @@ interface BranchItem {
   whatsappNumber?: string;
   managerName?: string;
   status?: string;
+  sessionStatus?: string;
   createdAt?: string;
   staffCount?: number;
   assetsCount?: number;
@@ -476,18 +477,33 @@ export default function BranchListPage() {
 
               {/* WhatsApp & Actions Footer */}
               <div className="p-4 bg-white space-y-3">
-                <div className="flex items-center justify-between text-xs bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/80">
-                  <div className="flex items-center gap-2 text-emerald-900 font-mono font-bold text-[11px]">
-                    <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{b.whatsappNumber}</span>
+                {b.sessionStatus === 'CONNECTED' && b.whatsappNumber ? (
+                  <div className="flex items-center justify-between text-xs bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200/80">
+                    <div className="flex items-center gap-2 text-emerald-900 font-mono font-bold text-[11px]">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>{b.whatsappNumber}</span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedBranchForWhatsApp(b.id)}
+                      className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer underline"
+                    >
+                      Manage
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setSelectedBranchForWhatsApp(b.id)}
-                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-0.5 cursor-pointer underline"
-                  >
-                    <span>Link Line</span>
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex items-center justify-between text-xs bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/80">
+                    <div className="flex items-center gap-2 text-amber-900 font-medium text-[11px]">
+                      <Smartphone className="w-3.5 h-3.5 text-amber-600" />
+                      <span>WhatsApp Offline</span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedBranchForWhatsApp(b.id)}
+                      className="text-[11px] font-bold text-amber-800 hover:text-amber-950 bg-amber-200/70 px-2 py-0.5 rounded cursor-pointer"
+                    >
+                      Scan QR
+                    </button>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <Link

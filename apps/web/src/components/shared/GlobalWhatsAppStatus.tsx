@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useBranchWhatsAppConfigs } from '@/api/printHub.api';
 import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
-import { Radio } from 'lucide-react';
+import { Radio, QrCode } from 'lucide-react';
 import { useFilterStore } from '@/stores/filter.store';
 
 export default function GlobalWhatsAppStatus() {
@@ -9,7 +9,6 @@ export default function GlobalWhatsAppStatus() {
   const [showModal, setShowModal] = useState(false);
   const selectedBranchId = useFilterStore((s) => s.selectedBranches?.[0]);
 
-  // Read live branches from local store directly to avoid stale cache
   const [liveBranch, setLiveBranch] = useState<any>(null);
 
   const syncLiveBranch = () => {
@@ -35,17 +34,17 @@ export default function GlobalWhatsAppStatus() {
 
   const activeConfig = liveBranch || (configs || [])[0] || null;
   const isConnected = activeConfig?.sessionStatus === 'CONNECTED';
-  const phone = activeConfig?.whatsappNumber || activeConfig?.phone || '+91 6305210926';
+  const phone = activeConfig?.whatsappNumber || activeConfig?.phone || '';
   const branchId = activeConfig?.id || activeConfig?.branchId || 'f5abaacc-d2b6-4591-91fb-314b2188e18c';
 
   return (
     <>
       <div className="flex items-center">
-        {isConnected ? (
+        {isConnected && phone ? (
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-            title={`WhatsApp Line Connected for ${phone}. Click to manage session.`}
+            title={`Shop WhatsApp is Live on ${phone}. Click to manage or disconnect.`}
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
             <span className="font-mono text-[11px] hidden sm:inline">{phone}</span>
@@ -55,11 +54,11 @@ export default function GlobalWhatsAppStatus() {
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition-all cursor-pointer shadow-2xs animate-pulse"
-            title={`WhatsApp Line Offline for ${phone}. Click to scan QR code and connect.`}
+            title="Shop WhatsApp is not linked. Click to scan WhatsApp Web QR Code."
           >
-            <Radio className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <span className="text-[11px] font-mono hidden sm:inline">{phone}</span>
-            <span className="text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.2 rounded">Connect</span>
+            <QrCode className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="text-[11px] font-semibold hidden sm:inline">WhatsApp Offline</span>
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.2 rounded">Scan QR</span>
           </button>
         )}
       </div>
