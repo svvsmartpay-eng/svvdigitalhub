@@ -399,6 +399,28 @@ export function useBranchWhatsAppConfigs() {
     queryKey: ['branch-whatsapp-configs'],
     queryFn: async () => {
       try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (parsed && parsed.length > 0) {
+            return parsed.map((b: any) => ({
+              id: `cfg-${b.id}`,
+              branchId: b.id,
+              branchName: b.name || (b.code === 'SVV-1' ? 'SVV Main Hub' : 'SVV Digital Desk'),
+              branchCode: b.code || 'SVV',
+              branchCity: b.city || 'Telangana',
+              whatsappNumber: b.whatsappNumber || b.phone || '+91 77386 63866',
+              phoneNumber: b.whatsappNumber || b.phone || '+91 77386 63866',
+              displayName: `${b.name} Print Desk`,
+              status: b.status || 'ACTIVE',
+              isEnabled: true,
+              welcomeMessage: `Welcome to ${b.name} Print Desk! Send your PDF or image documents here for instant printing.`,
+            }));
+          }
+        }
+      } catch {}
+
+      try {
         const res = await apiClient.get('/print-hub/whatsapp/configs');
         if (res.data?.data && res.data.data.length > 0) return res.data.data;
       } catch {}

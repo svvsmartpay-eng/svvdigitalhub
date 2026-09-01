@@ -47,6 +47,14 @@ export function useBranches() {
     queryKey: ['branches'], 
     queryFn: async () => { 
       try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (parsed && parsed.length > 0) return parsed;
+        }
+      } catch {}
+
+      try {
         const r = await apiClient.get('/branches'); 
         if (r.data?.data && r.data.data.length > 0) return r.data.data;
       } catch {}
@@ -56,17 +64,21 @@ export function useBranches() {
         if (!error && supaBranches && supaBranches.length > 0) {
           const activeOnly = supaBranches.filter((b: any) => b.isActive !== false);
           if (activeOnly.length > 0) {
-            return activeOnly.map((b: any) => ({
+            const mapped = activeOnly.map((b: any) => ({
               ...b,
               city: b.city || (b.code === 'SVV-1' ? 'Isnapur' : 'Patancheru'),
               whatsappNumber: b.whatsappNumber || b.phone || (b.code === 'SVV-1' ? '+91 77386 63866' : '+91 99515 27090'),
             }));
+            try {
+              localStorage.setItem('svv_branches_store', JSON.stringify(mapped));
+            } catch {}
+            return mapped;
           }
         }
       } catch {}
 
       return DEFAULT_BRANCHES;
     },
-    staleTime: 5000,
+    staleTime: 3000,
   });
 }

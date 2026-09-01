@@ -52,11 +52,16 @@ export default function BranchListPage() {
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Fetch branches with live counts from Supabase
-  // Fetch branches with live counts from Supabase
+  // Fetch branches with live counts from Supabase & persistent storage
   const loadBranches = async () => {
     setLoading(true);
     try {
+      let cached: BranchItem[] = [];
+      try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) cached = JSON.parse(local);
+      } catch {}
+
       const { data: branchRows, error } = await supabase
         .from('branches')
         .select('*')
@@ -69,7 +74,20 @@ export default function BranchListPage() {
       const { data: users } = await supabase.from('users').select('branchId');
       const { data: orders } = await supabase.from('print_orders').select('branchId');
 
-      if (activeRows.length > 0) {
+      if (cached && cached.length > 0) {
+        const merged = cached.map(b => {
+          const aCount = assets?.filter((a: any) => a.branchId === b.id).length || b.assetsCount || 10;
+          const uCount = users?.filter((u: any) => u.branchId === b.id).length || b.staffCount || 3;
+          const oCount = orders?.filter((o: any) => o.branchId === b.id).length || b.ordersCount || 0;
+          return {
+            ...b,
+            staffCount: uCount,
+            assetsCount: aCount,
+            ordersCount: oCount,
+          };
+        });
+        setBranches(merged);
+      } else if (activeRows.length > 0) {
         const enriched: BranchItem[] = activeRows.map((b: any) => {
           const wa = waConfigs?.find((w: any) => w.branchId === b.id);
           const aCount = assets?.filter((a: any) => a.branchId === b.id).length || 0;
@@ -87,9 +105,12 @@ export default function BranchListPage() {
         });
 
         setBranches(enriched);
+        try {
+          localStorage.setItem('svv_branches_store', JSON.stringify(enriched));
+        } catch {}
       } else {
         // Default seed branches
-        setBranches([
+        const defaultList: BranchItem[] = [
           {
             id: 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
             name: 'SVV Main Hub',
@@ -118,7 +139,11 @@ export default function BranchListPage() {
             assetsCount: 27,
             ordersCount: 8,
           }
-        ]);
+        ];
+        setBranches(defaultList);
+        try {
+          localStorage.setItem('svv_branches_store', JSON.stringify(defaultList));
+        } catch {}
       }
     } catch (err: any) {
       console.error('Error loading branches:', err);
@@ -217,7 +242,7 @@ export default function BranchListPage() {
         }
       } catch {}
 
-      // Update state locally immediately
+      // Update state locally and in localStorage immediately
       setBranches(prev => {
         const item: BranchItem = {
           id: branchId,
@@ -235,11 +260,11 @@ export default function BranchListPage() {
         };
 
         const exists = prev.some(b => b.id === branchId);
-        if (exists) {
-          return prev.map(b => b.id === branchId ? item : b);
-        } else {
-          return [...prev, item];
-        }
+        const updated = exists ? prev.map(b => b.id === branchId ? item : b) : [...prev, item];
+        try {
+          localStorage.setItem('svv_branches_store', JSON.stringify(updated));
+        } catch {}
+        return updated;
       });
 
       setIsModalOpen(false);
@@ -253,8 +278,14 @@ export default function BranchListPage() {
   const handleDeleteBranch = async (branchId: string, name: string) => {
     if (!confirm(`Are you sure you want to delete branch "${name}"? This will remove the branch from operations.`)) return;
     
-    // Immediate UI update
-    setBranches(prev => prev.filter(b => b.id !== branchId));
+    // Immediate UI and localStorage update
+    setBranches(prev => {
+      const remaining = prev.filter(b => b.id !== branchId);
+      try {
+        localStorage.setItem('svv_branches_store', JSON.stringify(remaining));
+      } catch {}
+      return remaining;
+    });
 
     try {
       try {
