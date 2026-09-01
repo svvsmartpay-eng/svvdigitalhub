@@ -15,17 +15,8 @@ import {
   LayoutGrid, List, ChevronLeft, ChevronRight, 
   RotateCw, ZoomIn, ZoomOut, Maximize2, Eye, Crop,
   SlidersHorizontal, ChevronDown, Check, ArrowRight, Files,
-  Copy, MessageSquare, PhoneCall, Smartphone
+  Copy, MessageSquare, PhoneCall, Smartphone, AlertCircle
 } from 'lucide-react';
-
-// Default mockup sample document images for crisp realistic previews matching CSC banking standard
-const SAMPLE_DOCS = [
-  { id: 'd1', name: 'Aadhaar_Front.jpg', type: 'IMAGE', url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=300&auto=format&fit=crop&q=80', sizeText: '2.4 MB', pageCount: 1 },
-  { id: 'd2', name: 'Aadhaar_Back.jpg', type: 'IMAGE', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=300&auto=format&fit=crop&q=80', sizeText: '2.1 MB', pageCount: 1 },
-  { id: 'd3', name: 'Voter_ID_Card.jpg', type: 'IMAGE', url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300&auto=format&fit=crop&q=80', sizeText: '1.8 MB', pageCount: 1 },
-  { id: 'd4', name: 'PAN_Card_Scan.jpg', type: 'IMAGE', url: 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=300&auto=format&fit=crop&q=80', sizeText: '3.0 MB', pageCount: 1 },
-  { id: 'd5', name: 'Application_Form.pdf', type: 'PDF', url: '/uploads/doc.pdf', sizeText: '1.5 MB', pageCount: 3 },
-];
 
 export default function PrintQueuePage() {
   usePrintHubRealtimeSync();
@@ -56,7 +47,7 @@ export default function PrintQueuePage() {
 
   const { data: whatsappData, refetch: refetchWhatsApp } = useWhatsAppInbox(selectedBranch || undefined);
   const rawOrders: any[] = response?.data || [];
-  const whatsappMessages: any[] = whatsappData?.messages || [];
+  const whatsappMessages: any[] = whatsappData?.messages || (Array.isArray(whatsappData) ? whatsappData : []);
 
   // Live real-time polling auto-refetch every 2.5 seconds
   useEffect(() => {
@@ -142,7 +133,7 @@ export default function PrintQueuePage() {
     });
 
     const msgs = Array.isArray(whatsappData) ? whatsappData : (whatsappMessages || []);
-    msgs.forEach((m) => {
+    msgs.forEach((m: any) => {
       if (m.mediaUrl && m.mediaUrl.toLowerCase().endsWith('.pdf') && !pdfPageCountsMap[m.mediaUrl]) {
         urlsToInspect.add(m.mediaUrl);
       }
@@ -180,180 +171,86 @@ export default function PrintQueuePage() {
     };
   }, [lastActivityTime, selectedOrderId, currentUser, rawOrders]);
 
-  // Map and group real database orders and WhatsApp session files into single tickets per customer
+  // Map real database orders into STRICT, ISOLATED individual tickets per order (NO cross-token contamination)
   const enrichedOrders = useMemo(() => {
-    if ((!rawOrders || rawOrders.length === 0) && (!whatsappMessages || whatsappMessages.length === 0)) {
+    if (!rawOrders || rawOrders.length === 0) {
       return [];
     }
 
-    const normalizePhoneKey = (p?: string): string => {
-      if (!p) return '';
-      const digits = p.replace(/[^0-9]/g, '');
-      return digits.length >= 10 ? digits.slice(-10) : digits;
-    };
-
-    const resolveCustomerName = (senderName?: string, orderName?: string, phone?: string): string => {
-      const isGeneric = (n?: string) => !n || n.includes('Print Desk') || n.includes('SVV Communication') || n === 'Walk-in Customer' || n === 'Test Walk-in Customer';
-      if (!isGeneric(senderName)) return senderName!.trim();
-      if (!isGeneric(orderName)) return orderName!.trim();
-      if (phone) return formatDisplayPhone(phone);
-      return 'Walk-in Customer';
-    };
-
-    // Grouping map: key = normalized 10-digit phone (or orderId)
-    const customerTicketsMap: Map<string, any> = new Map();
-
-    // 1. Process all WhatsApp media messages to gather all customer files
     const msgsList = Array.isArray(whatsappData) ? whatsappData : (whatsappMessages || []);
-    const phoneMediaMap: Record<string, any[]> = {};
-    const phoneSenderNameMap: Record<string, string> = {};
 
-    msgsList.forEach((msg: any) => {
-      if (msg.phone) {
-        const phoneKey = normalizePhoneKey(msg.phone);
-        if (msg.senderName && !msg.senderName.includes('Print Desk') && !msg.senderName.includes('SVV Communication')) {
-          phoneSenderNameMap[phoneKey] = msg.senderName;
-        }
+    const result = rawOrders.map((ord: any) => {
+      // 1. Gather ONLY media files specifically belonging to THIS order
+      const docItems: any[] = [];
+      const seenUrls = new Set<string>();
 
-        if (msg.mediaUrl) {
-          if (!phoneMediaMap[phoneKey]) phoneMediaMap[phoneKey] = [];
-          
-          const isPdf = msg.mediaUrl.toLowerCase().endsWith('.pdf') || (msg.messageBody && msg.messageBody.toLowerCase().endsWith('.pdf')) || msg.mediaType === 'PDF';
-          const isImg = !isPdf && (
-            msg.mediaUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) ||
-            (msg.messageBody && msg.messageBody.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i)) ||
-            msg.mediaType === 'IMAGE'
-          );
+      // Parse primary documentUrl and documentName
+      if (ord.documentUrl) {
+        const isPdf = ord.documentUrl.toLowerCase().includes('.pdf') || (ord.documentName && ord.documentName.toLowerCase().endsWith('.pdf'));
+        const isImg = !isPdf && (ord.documentUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) || (ord.documentName && ord.documentName.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i)));
+        const type = isPdf ? 'PDF' : isImg ? 'IMAGE' : 'DOC';
+        const realPageCount = isPdf ? (pdfPageCountsMap[ord.documentUrl] || ord.pageCount || 1) : (ord.pageCount || 1);
+
+        docItems.push({
+          id: `doc-${ord.id}-primary`,
+          name: ord.documentName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
+          type,
+          url: ord.documentUrl,
+          sizeText: isPdf ? '1.8 MB' : '2.4 MB',
+          pageCount: realPageCount,
+          createdAt: ord.createdAt,
+          tokenNumber: ord.tokenNumber,
+          customerPhone: ord.customerPhone,
+        });
+        seenUrls.add(ord.documentUrl);
+      }
+
+      // Find additional media messages that explicitly have orderId === ord.id
+      const linkedMsgs = msgsList.filter((m: any) => m.orderId && m.orderId === ord.id && m.mediaUrl);
+      linkedMsgs.forEach((m: any, idx: number) => {
+        if (!seenUrls.has(m.mediaUrl)) {
+          seenUrls.add(m.mediaUrl);
+          const isPdf = m.mediaUrl.toLowerCase().includes('.pdf') || m.mediaType === 'PDF';
+          const isImg = !isPdf && (m.mediaUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) || m.mediaType === 'IMAGE');
           const type = isPdf ? 'PDF' : isImg ? 'IMAGE' : 'DOC';
 
-          let cleanName = msg.messageBody || (isPdf ? 'Document.pdf' : 'Photo.jpg');
-          if (cleanName.startsWith('Please print photo:') || cleanName.startsWith('Please print document:') || cleanName.startsWith('Please print')) {
-            cleanName = cleanName.replace(/^Please print (photo|document):\s*/i, '').replace(/^Please print\s*/i, '').trim();
-          }
-          if (cleanName.includes('[Photo:') || cleanName.includes('[File:')) {
-            const match = cleanName.match(/\[(Photo|File):\s*([^\]]+)\]/i);
-            if (match && match[2]) cleanName = match[2].trim();
-          }
-
-          const realPageCount = isPdf ? (pdfPageCountsMap[msg.mediaUrl] || 1) : 1;
-
-          phoneMediaMap[phoneKey].push({
-            id: `msg-${msg.id}`,
-            name: cleanName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
+          docItems.push({
+            id: `doc-${ord.id}-msg-${m.id || idx}`,
+            name: m.fileName || m.messageBody || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
             type,
-            url: msg.mediaUrl,
+            url: m.mediaUrl,
             sizeText: isPdf ? '1.8 MB' : '2.4 MB',
-            pageCount: realPageCount,
-            createdAt: msg.createdAt,
+            pageCount: isPdf ? (pdfPageCountsMap[m.mediaUrl] || 1) : 1,
+            createdAt: m.createdAt,
+            tokenNumber: ord.tokenNumber,
+            customerPhone: ord.customerPhone,
           });
         }
-      }
-    });
+      });
 
-    // 2. Process real database orders and group them by normalized customer phone
-    (rawOrders || []).forEach((ord: any) => {
-      const phoneKey = normalizePhoneKey(ord.customerPhone) || `ord-${ord.id}`;
-      const attachedMedia = phoneMediaMap[phoneKey] || [];
-      const senderFromMsg = phoneSenderNameMap[phoneKey];
-      const finalCustomerName = resolveCustomerName(senderFromMsg, ord.customerName, ord.customerPhone);
+      const imageCount = docItems.filter((d) => d.type === 'IMAGE').length;
+      const pdfCount = docItems.filter((d) => d.type === 'PDF').length;
+      const docCount = docItems.filter((d) => d.type === 'DOC').length;
+      const totalFiles = docItems.length;
+      const totalPages = docItems.reduce((sum, d) => sum + (d.pageCount || 1), 0);
 
-      // Parse comma-separated document names if any
-      const docNames = (ord.documentName || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-      const isPdf = ord.documentUrl?.toLowerCase().endsWith('.pdf') || ord.documentName?.toLowerCase().endsWith('.pdf');
-      const isImg = !isPdf && (ord.documentUrl?.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) || ord.documentName?.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i));
-      const type = isPdf ? 'PDF' : isImg ? 'IMAGE' : 'DOC';
-      const realPageCount = isPdf ? (pdfPageCountsMap[ord.documentUrl] || ord.pageCount || 1) : (ord.pageCount || 1);
-
-      const primaryDocItem = {
-        id: `ord-${ord.id}`,
-        name: docNames[0] || ord.documentName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
-        type,
-        url: ord.documentUrl || '/uploads/doc.pdf',
-        sizeText: '2.1 MB',
-        pageCount: realPageCount,
-        createdAt: ord.createdAt,
+      return {
+        ...ord,
+        customerName: ord.customerName || 'Walk-in Customer',
+        tokenNumber: ord.tokenNumber,
+        docItems,
+        totalFiles,
+        totalPages,
+        imageCount,
+        pdfCount,
+        docCount,
+        timeFormatted: new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        assignedStaffName: ord.assignedStaff?.name || ord.assignedStaffName || 'Unassigned',
+        isLockedByOther: Boolean(ord.assignedStaffId && currentUser?.id && ord.assignedStaffId !== currentUser.id && ord.status === 'PRINTING'),
+        rawDate: new Date(ord.createdAt),
       };
-
-      if (!customerTicketsMap.has(phoneKey)) {
-        const docItems: any[] = [];
-        const seenNames = new Set<string>();
-
-        if (primaryDocItem.url) {
-          seenNames.add(primaryDocItem.name.toLowerCase());
-          docItems.push(primaryDocItem);
-        }
-
-        // Add additional comma-separated document names if available
-        if (docNames.length > 1) {
-          for (let i = 1; i < docNames.length; i++) {
-            const dName = docNames[i];
-            if (!seenNames.has(dName.toLowerCase())) {
-              seenNames.add(dName.toLowerCase());
-              const dIsPdf = dName.toLowerCase().endsWith('.pdf');
-              const dIsImg = !dIsPdf && dName.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i);
-              docItems.push({
-                id: `ord-multi-${ord.id}-${i}`,
-                name: dName,
-                type: dIsPdf ? 'PDF' : dIsImg ? 'IMAGE' : 'DOC',
-                url: ord.documentUrl || '/uploads/doc.pdf',
-                sizeText: '2.0 MB',
-                pageCount: 1,
-                createdAt: ord.createdAt,
-              });
-            }
-          }
-        }
-
-        // Add attached WhatsApp media files without duplicates
-        attachedMedia.forEach((m) => {
-          if (!seenNames.has(m.name.toLowerCase())) {
-            seenNames.add(m.name.toLowerCase());
-            docItems.push(m);
-          }
-        });
-
-        const imageCount = docItems.filter((d) => d.type === 'IMAGE').length;
-        const pdfCount = docItems.filter((d) => d.type === 'PDF').length;
-        const docCount = docItems.filter((d) => d.type === 'DOC').length;
-        const totalFiles = docItems.length;
-        const totalPages = docItems.reduce((sum, d) => sum + (d.pageCount || 1), 0);
-
-        customerTicketsMap.set(phoneKey, {
-          ...ord,
-          customerName: finalCustomerName,
-          tokenNumber: ord.tokenNumber || `T-${101 + customerTicketsMap.size}`,
-          docItems,
-          totalFiles,
-          totalPages,
-          imageCount,
-          pdfCount,
-          docCount,
-          timeFormatted: new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          assignedStaffName: ord.assignedStaff?.name || 'Unassigned',
-          isLockedByOther: Boolean(ord.assignedStaffId && currentUser?.id && ord.assignedStaffId !== currentUser.id && ord.status === 'PRINTING'),
-          rawDate: new Date(ord.createdAt),
-        });
-      } else {
-        // Merge into existing ticket for this customer
-        const existingTicket = customerTicketsMap.get(phoneKey);
-        const existingNames = new Set(existingTicket.docItems.map((d: any) => d.name.toLowerCase()));
-        
-        if (!existingNames.has(primaryDocItem.name.toLowerCase())) {
-          existingNames.add(primaryDocItem.name.toLowerCase());
-          existingTicket.docItems.push(primaryDocItem);
-        }
-
-        // Recompute counts
-        existingTicket.imageCount = existingTicket.docItems.filter((d: any) => d.type === 'IMAGE').length;
-        existingTicket.pdfCount = existingTicket.docItems.filter((d: any) => d.type === 'PDF').length;
-        existingTicket.docCount = existingTicket.docItems.filter((d: any) => d.type === 'DOC').length;
-        existingTicket.totalFiles = existingTicket.docItems.length;
-        existingTicket.totalPages = existingTicket.docItems.reduce((sum: number, d: any) => sum + (d.pageCount || 1), 0);
-        existingTicket.totalAmount = (existingTicket.totalAmount || 0) + (ord.totalAmount || 0);
-      }
     });
 
-    const result = Array.from(customerTicketsMap.values());
     result.sort((a, b) => (b.rawDate?.getTime() || 0) - (a.rawDate?.getTime() || 0));
     return result;
   }, [rawOrders, whatsappData, whatsappMessages, currentUser, pdfPageCountsMap]);
@@ -405,6 +302,14 @@ export default function PrintQueuePage() {
 
   const selectedOrder = filteredOrders.find((o) => o.id === selectedOrderId || o.tokenNumber === selectedOrderId) || filteredOrders[0] || null;
   const activeDoc = selectedOrder?.docItems?.[selectedDocIndex] || selectedOrder?.docItems?.[0] || null;
+
+  // STRICT VALIDATION GUARD: Verify that activeDoc matches selectedOrder token and phone
+  const hasDocumentMappingError = useMemo(() => {
+    if (!selectedOrder || !activeDoc) return false;
+    if (activeDoc.tokenNumber && activeDoc.tokenNumber !== selectedOrder.tokenNumber) return true;
+    if (activeDoc.customerPhone && activeDoc.customerPhone !== selectedOrder.customerPhone) return true;
+    return false;
+  }, [selectedOrder, activeDoc]);
 
   const handleStartWork = (order: any) => {
     setSelectedOrderId(order.id || order.tokenNumber);
@@ -1377,6 +1282,19 @@ export default function PrintQueuePage() {
                 ) : (
                   <div className="text-[#6B7280] text-xs">No preview available</div>
                 )}
+
+                {/* Document Mapping Error Banner */}
+                {hasDocumentMappingError && (
+                  <div className="absolute inset-x-4 top-4 p-3 bg-red-600 text-white rounded-xl shadow-lg border border-red-700 flex items-center gap-2 text-xs font-bold animate-bounce z-20">
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <div>
+                      <div>⚠️ Document Mapping Error Detected</div>
+                      <div className="text-[10px] font-normal opacity-90">
+                        This file belongs to another session and does not match Token {selectedOrder?.tokenNumber}. Direct printing has been locked for safety.
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1403,8 +1321,13 @@ export default function PrintQueuePage() {
 
               {/* 2. Direct Print = Orange */}
               <button
+                disabled={hasDocumentMappingError}
                 onClick={handleDirectPrintTrigger}
-                className="px-4 py-2 rounded-xl bg-[#FD7E14] hover:bg-[#E86D07] text-[#FFFFFF] font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                className={`px-4 py-2 rounded-xl text-[#FFFFFF] font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all ${
+                  hasDocumentMappingError
+                    ? 'bg-gray-400 cursor-not-allowed opacity-50'
+                    : 'bg-[#FD7E14] hover:bg-[#E86D07] active:scale-[0.98] cursor-pointer'
+                }`}
               >
                 <Printer className="w-3.5 h-3.5" /> 2. Direct Print
               </button>

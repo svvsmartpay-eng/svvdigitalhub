@@ -297,13 +297,14 @@ export async function processIncomingWhatsAppMessage(params: {
     },
   });
 
-  // 1. Check if customer already has an active order today (grouping by 10-digit phone)
+  // 1. Group ONLY consecutive multi-page files sent within a 2-minute burst (120s) for a PENDING order
+  const TWO_MINUTES_AGO = new Date(Date.now() - 2 * 60 * 1000);
   const activeOrdersList = await prisma.printOrder.findMany({
     where: {
       organizationId: orgId,
       branchId,
-      status: { in: ['PENDING', 'PRINTING', 'READY_FOR_DELIVERY'] },
-      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      status: 'PENDING',
+      createdAt: { gte: TWO_MINUTES_AGO },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -313,25 +314,25 @@ export async function processIncomingWhatsAppMessage(params: {
     return ordDigits.slice(-10) === rawDigits10;
   });
 
-  if (existingActiveOrder) {
-    // Append file to existing customer token
-    const updatedDocName = params.mediaUrl && existingActiveOrder.documentName
+  if (existingActiveOrder && params.mediaUrl) {
+    // Append multi-page file to active batch order
+    const updatedDocName = existingActiveOrder.documentName
       ? `${existingActiveOrder.documentName}, ${docName}`
-      : (existingActiveOrder.documentName || docName);
+      : docName;
 
     createdOrder = await prisma.printOrder.update({
       where: { id: existingActiveOrder.id },
       data: {
         documentName: updatedDocName,
-        documentUrl: params.mediaUrl || existingActiveOrder.documentUrl,
-        pageCount: params.mediaUrl ? ((existingActiveOrder.pageCount || 1) + 1) : existingActiveOrder.pageCount,
-        totalAmount: params.mediaUrl ? ((existingActiveOrder.totalAmount || 0) + defaultPrice) : existingActiveOrder.totalAmount,
+        documentUrl: existingActiveOrder.documentUrl || params.mediaUrl,
+        pageCount: (existingActiveOrder.pageCount || 1) + 1,
+        totalAmount: (existingActiveOrder.totalAmount || 0) + defaultPrice,
       },
     });
 
     autoReplyText = `Your document received successfully.\nToken No: ${existingActiveOrder.tokenNumber}\nReceived Time: ${receivedTime}`;
   } else {
-    // Generate new sequential token
+    // Generate a fresh unique sequential token ID
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
     const countToday = await prisma.printOrder.count({
       where: {
@@ -352,7 +353,7 @@ export async function processIncomingWhatsAppMessage(params: {
         customerName,
         customerPhone: formattedPhone,
         source: 'WHATSAPP',
-        documentUrl: params.mediaUrl || 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80',
+        documentUrl: params.mediaUrl || null,
         documentName: docName,
         pageCount: 1,
         copies: 1,

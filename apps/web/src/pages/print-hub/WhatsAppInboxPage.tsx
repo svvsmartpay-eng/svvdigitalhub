@@ -271,76 +271,48 @@ export default function WhatsAppInboxPage() {
     const groupedOrdersMap: Map<string, any> = new Map();
 
     (ordersResponse?.data || []).forEach((ord: any) => {
-      const phoneKey = normalizePhoneKey(ord.customerPhone) || `ord-${ord.id}`;
       const ordDate = new Date(ord.createdAt);
 
-      // Find all linked WhatsApp media messages matching this customer's normalized phone
-      const matchingMessages = (messages || []).filter((m: any) => normalizePhoneKey(m.phone) === phoneKey);
+      // Find ONLY WhatsApp media messages specifically linked to THIS order ID
+      const matchingMessages = (messages || []).filter((m: any) => m.orderId === ord.id);
       const latestMsg = matchingMessages[matchingMessages.length - 1] || null;
       const finalCustomerName = resolveCustomerName(latestMsg?.senderName, ord.customerName, ord.customerPhone);
 
-      // Parse comma-separated document names if any
-      const docNames = (ord.documentName || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-      const isPdf = ord.documentUrl?.toLowerCase().endsWith('.pdf') || ord.documentName?.toLowerCase().endsWith('.pdf');
-      const isDocx = ord.documentUrl?.toLowerCase().endsWith('.docx') || ord.documentName?.toLowerCase().endsWith('.docx');
-
-      const primaryMedia = {
-        id: `ord-doc-${ord.id}-0`,
-        phone: ord.customerPhone,
-        mediaUrl: ord.documentUrl || '/uploads/doc.pdf',
-        mediaType: isPdf ? 'PDF' : isDocx ? 'DOC' : 'IMAGE',
-        messageBody: docNames[0] || ord.documentName || 'Document',
-        createdAt: ord.createdAt,
-      };
-
       const mediaItems: any[] = [];
-      const seenNames = new Set<string>();
+      const seenUrls = new Set<string>();
 
-      if (primaryMedia.mediaUrl) {
-        seenNames.add(primaryMedia.messageBody.toLowerCase());
-        mediaItems.push(primaryMedia);
+      // Primary document
+      if (ord.documentUrl) {
+        const isPdf = ord.documentUrl.toLowerCase().includes('.pdf') || (ord.documentName && ord.documentName.toLowerCase().endsWith('.pdf'));
+        const isDocx = ord.documentUrl.toLowerCase().includes('.docx') || (ord.documentName && ord.documentName.toLowerCase().endsWith('.docx'));
+
+        mediaItems.push({
+          id: `ord-doc-${ord.id}-0`,
+          phone: ord.customerPhone,
+          mediaUrl: ord.documentUrl,
+          mediaType: isPdf ? 'PDF' : isDocx ? 'DOC' : 'IMAGE',
+          messageBody: ord.documentName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
+          createdAt: ord.createdAt,
+          tokenNumber: ord.tokenNumber,
+        });
+        seenUrls.add(ord.documentUrl);
       }
 
-      // Add extra comma-separated document names
-      if (docNames.length > 1) {
-        for (let i = 1; i < docNames.length; i++) {
-          const dName = docNames[i];
-          if (!seenNames.has(dName.toLowerCase())) {
-            seenNames.add(dName.toLowerCase());
-            const dIsPdf = dName.toLowerCase().endsWith('.pdf');
-            const dIsDocx = dName.toLowerCase().endsWith('.docx');
-            mediaItems.push({
-              id: `ord-doc-${ord.id}-${i}`,
-              phone: ord.customerPhone,
-              mediaUrl: ord.documentUrl || '/uploads/doc.pdf',
-              mediaType: dIsPdf ? 'PDF' : dIsDocx ? 'DOC' : 'IMAGE',
-              messageBody: dName,
-              createdAt: ord.createdAt,
-            });
-          }
-        }
-      }
+      // Add extra media messages explicitly belonging to this order
+      matchingMessages.filter((m: any) => m.mediaUrl).forEach((m: any, idx: number) => {
+        if (!seenUrls.has(m.mediaUrl)) {
+          seenUrls.add(m.mediaUrl);
+          const isPdf = m.mediaUrl.toLowerCase().includes('.pdf') || m.mediaType === 'PDF';
+          const isDocx = m.mediaUrl.toLowerCase().includes('.docx') || m.mediaType === 'DOC';
 
-      // Add any WhatsApp chat media messages for this phone
-      matchingMessages.filter((m: any) => m.mediaUrl).forEach((m: any) => {
-        let cleanName = m.messageBody || 'Attachment';
-        if (cleanName.startsWith('Please print photo:') || cleanName.startsWith('Please print document:') || cleanName.startsWith('Please print')) {
-          cleanName = cleanName.replace(/^Please print (photo|document):\s*/i, '').replace(/^Please print\s*/i, '').trim();
-        }
-        if (cleanName.includes('[Photo:') || cleanName.includes('[File:')) {
-          const match = cleanName.match(/\[(Photo|File):\s*([^\]]+)\]/i);
-          if (match && match[2]) cleanName = match[2].trim();
-        }
-
-        if (!seenNames.has(cleanName.toLowerCase())) {
-          seenNames.add(cleanName.toLowerCase());
           mediaItems.push({
-            id: `msg-${m.id}`,
+            id: `msg-${m.id || idx}`,
             phone: m.phone,
             mediaUrl: m.mediaUrl,
-            mediaType: m.mediaType || (m.mediaUrl.toLowerCase().endsWith('.pdf') ? 'PDF' : 'IMAGE'),
-            messageBody: cleanName,
+            mediaType: isPdf ? 'PDF' : isDocx ? 'DOC' : 'IMAGE',
+            messageBody: m.fileName || m.messageBody || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
             createdAt: m.createdAt,
+            tokenNumber: ord.tokenNumber,
           });
         }
       });
@@ -374,42 +346,29 @@ export default function WhatsAppInboxPage() {
       const isLockedByOther = Boolean(lockedByStaffId && currentUser?.id && lockedByStaffId !== currentUser.id && ord.status === 'PRINTING');
       const isLockedByMe = Boolean(lockedByStaffId === currentUser?.id || (!lockedByStaffId && ord.status === 'PRINTING'));
 
-      if (!groupedOrdersMap.has(phoneKey)) {
-        groupedOrdersMap.set(phoneKey, {
-          id: ord.id,
-          phone: ord.customerPhone || '',
-          customerName: finalCustomerName,
-          branch: ord.branch,
-          branchName: ord.branch?.name || 'Isnapur',
-          order: ord,
-          orderNo: ord.orderNo,
-          tokenNumber: ord.tokenNumber || `T-${ord.id.slice(-3)}`,
-          latestMsg,
-          mediaMessages: mediaItems,
-          status,
-          fileName: docNames[0] || ord.documentName || 'Document',
-          receivedTime: ordDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          servedBy: ord.assignedStaff?.name || operatorName,
-          lockedByStaffId,
-          lockedByStaffName,
-          isLockedByOther,
-          isLockedByMe,
-          amount: ord.totalAmount || 100,
-          rawDate: ordDate,
-          durationText,
-        });
-      } else {
-        const existing = groupedOrdersMap.get(phoneKey);
-        // Merge media messages
-        const existingNames = new Set(existing.mediaMessages.map((m: any) => m.messageBody.toLowerCase()));
-        mediaItems.forEach((m) => {
-          if (!existingNames.has(m.messageBody.toLowerCase())) {
-            existingNames.add(m.messageBody.toLowerCase());
-            existing.mediaMessages.push(m);
-          }
-        });
-        existing.amount = (existing.amount || 0) + (ord.totalAmount || 0);
-      }
+      groupedOrdersMap.set(ord.id, {
+        id: ord.id,
+        phone: ord.customerPhone || '',
+        customerName: finalCustomerName,
+        branch: ord.branch,
+        branchName: ord.branch?.name || 'Isnapur',
+        order: ord,
+        orderNo: ord.orderNo,
+        tokenNumber: ord.tokenNumber || `T-${ord.id.slice(-3)}`,
+        latestMsg,
+        mediaMessages: mediaItems,
+        status,
+        fileName: ord.documentName || 'Document',
+        receivedTime: ordDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        servedBy: ord.assignedStaff?.name || operatorName,
+        lockedByStaffId,
+        lockedByStaffName,
+        isLockedByOther,
+        isLockedByMe,
+        amount: ord.totalAmount || 100,
+        rawDate: ordDate,
+        durationText,
+      });
     });
 
     const ordersList = Array.from(groupedOrdersMap.values());
