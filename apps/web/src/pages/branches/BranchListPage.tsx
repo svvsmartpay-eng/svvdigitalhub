@@ -263,6 +263,7 @@ export default function BranchListPage() {
         const updated = exists ? prev.map(b => b.id === branchId ? item : b) : [...prev, item];
         try {
           localStorage.setItem('svv_branches_store', JSON.stringify(updated));
+          window.dispatchEvent(new Event('storage'));
         } catch {}
         return updated;
       });
@@ -283,6 +284,7 @@ export default function BranchListPage() {
       const remaining = prev.filter(b => b.id !== branchId);
       try {
         localStorage.setItem('svv_branches_store', JSON.stringify(remaining));
+        window.dispatchEvent(new Event('storage'));
       } catch {}
       return remaining;
     });

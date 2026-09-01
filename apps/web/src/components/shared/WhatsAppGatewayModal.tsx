@@ -24,19 +24,45 @@ export default function WhatsAppGatewayModal({
   branchId = 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
   onOrderCreated,
 }: WhatsAppGatewayModalProps) {
-  const [connectedPhone, setConnectedPhone] = useState<string>('+91 77386 63866');
-  const [gatewayStatus, setGatewayStatus] = useState<'IDLE' | 'CONNECTING' | 'SCAN_QR_REQUIRED' | 'CONNECTED' | 'OFFLINE'>('SCAN_QR_REQUIRED');
-  const [officialRawQr, setOfficialRawQr] = useState<string | null>(() => {
-    return `2@${Date.now()},917738663866,SVV_AMS_WEB_${Math.random().toString(36).substring(2, 12)}`;
+  const [connectedPhone, setConnectedPhone] = useState<string>(() => {
+    try {
+      const local = localStorage.getItem('svv_branches_store');
+      if (local) {
+        const list = JSON.parse(local);
+        const match = list.find((b: any) => b.id === branchId) || list[0];
+        if (match?.whatsappNumber || match?.phone) return match.whatsappNumber || match.phone;
+      }
+    } catch {}
+    return '+91 6305210926';
   });
+
+  const [gatewayStatus, setGatewayStatus] = useState<'IDLE' | 'CONNECTING' | 'SCAN_QR_REQUIRED' | 'CONNECTED' | 'OFFLINE'>('SCAN_QR_REQUIRED');
+  const [officialRawQr, setOfficialRawQr] = useState<string | null>(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
 
   const generateFreshNoiseQR = useCallback(() => {
-    const rawDigits = connectedPhone.replace(/[^0-9]/g, '') || '917738663866';
+    const rawDigits = connectedPhone.replace(/[^0-9]/g, '') || '916305210926';
     const time = Date.now();
     const token = Math.random().toString(36).substring(2, 12);
     return `2@${time},${rawDigits},SVV_AMS_WEB_${token}`;
   }, [connectedPhone]);
+
+  useEffect(() => {
+    try {
+      const local = localStorage.getItem('svv_branches_store');
+      if (local) {
+        const list = JSON.parse(local);
+        const match = list.find((b: any) => b.id === branchId) || list[0];
+        if (match?.whatsappNumber || match?.phone) {
+          setConnectedPhone(match.whatsappNumber || match.phone);
+        }
+      }
+    } catch {}
+  }, [branchId]);
+
+  useEffect(() => {
+    setOfficialRawQr(generateFreshNoiseQR());
+  }, [connectedPhone, generateFreshNoiseQR]);
   const [loading, setLoading] = useState<boolean>(false);
   const [keepSignedIn, setKeepSignedIn] = useState<boolean>(true);
   const [qrCountdown, setQrCountdown] = useState<number>(25);
