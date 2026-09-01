@@ -129,6 +129,16 @@ export default function WhatsAppGatewayModal({
         await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/disconnect`, { method: 'POST' });
       }
 
+      // Update local persistent store
+      try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) {
+          const parsed = JSON.parse(local);
+          const updated = parsed.map((b: any) => b.id === branchId ? { ...b, sessionStatus: 'OFFLINE' } : b);
+          localStorage.setItem('svv_branches_store', JSON.stringify(updated));
+        }
+      } catch {}
+
       await supabase
         .from('branch_whatsapp_configs')
         .update({ status: 'SCAN_QR_REQUIRED', updatedAt: new Date().toISOString() })
@@ -174,10 +184,74 @@ export default function WhatsAppGatewayModal({
         });
       } catch {}
 
+      // Update local persistent store
+      try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) {
+          const parsed = JSON.parse(local);
+          const updated = parsed.map((b: any) => b.id === branchId ? { ...b, sessionStatus: 'CONNECTED', whatsappNumber: waNumber } : b);
+          localStorage.setItem('svv_branches_store', JSON.stringify(updated));
+        }
+      } catch {}
+
       setGatewayStatus('CONNECTED');
       if (onOrderCreated) onOrderCreated();
     } catch (e: any) {
       setErrorPopup(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Ingest sample customer WhatsApp order to verify end-to-end pipeline
+  const handleSimulateCustomerMessage = async () => {
+    setLoading(true);
+    try {
+      const now = new Date();
+      const tokenNo = `T-${100 + Math.floor(Math.random() * 899)}`;
+      const orderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `ord-${Date.now()}`;
+      const customerNum = connectedPhone || '+91 77807 32293';
+      
+      const payload = {
+        id: orderId,
+        orderNo: `PRN-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${tokenNo.replace('T-', '')}`,
+        tokenNumber: tokenNo,
+        organizationId: 'svv-org-001',
+        branchId,
+        customerName: `Customer (${customerNum.slice(-4)})`,
+        customerPhone: customerNum,
+        source: 'WHATSAPP',
+        documentUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80',
+        documentName: `Customer_Document_${tokenNo}.pdf`,
+        pageCount: 2,
+        colorMode: 'COLOR',
+        copies: 1,
+        totalAmount: 40,
+        status: 'PENDING',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+
+      await supabase.from('print_orders').insert([payload]);
+      
+      await supabase.from('whatsapp_messages').insert([{
+        id: `msg-${Date.now()}`,
+        organizationId: 'svv-org-001',
+        branchId,
+        phone: customerNum,
+        senderName: payload.customerName,
+        messageBody: `Please print document: ${payload.documentName}`,
+        mediaUrl: payload.documentUrl,
+        mediaType: 'PDF',
+        isIncoming: true,
+        orderId,
+        createdAt: now.toISOString(),
+      }]);
+
+      if (onOrderCreated) onOrderCreated();
+      alert(`✅ Test Document Ingested! Token ${tokenNo} created in queue for ${customerNum}.`);
+    } catch (err: any) {
+      setErrorPopup(`Simulation error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -418,6 +492,18 @@ export default function WhatsAppGatewayModal({
                     <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
                     Confirm Scanned & Linked
                   </Button>
+                </div>
+
+                {/* Instant Ingestion Test Button */}
+                <div className="mt-3 text-center">
+                  <button
+                    onClick={handleSimulateCustomerMessage}
+                    disabled={loading}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 underline font-medium flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3 text-emerald-400" />
+                    <span>Test Receiving Document on {connectedPhone} (Simulate Ticket)</span>
+                  </button>
                 </div>
               </div>
 

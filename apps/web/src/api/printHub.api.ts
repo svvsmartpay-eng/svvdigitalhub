@@ -412,7 +412,7 @@ export function useBranchWhatsAppConfigs() {
               whatsappNumber: b.whatsappNumber || b.phone || '+91 77386 63866',
               phoneNumber: b.whatsappNumber || b.phone || '+91 77386 63866',
               displayName: `${b.name} Print Desk`,
-              status: b.status || 'ACTIVE',
+              status: b.sessionStatus === 'CONNECTED' ? 'CONNECTED' : (b.sessionStatus === 'ACTIVE' ? 'ACTIVE' : 'OFFLINE'),
               isEnabled: true,
               welcomeMessage: `Welcome to ${b.name} Print Desk! Send your PDF or image documents here for instant printing.`,
             }));
@@ -436,6 +436,7 @@ export function useBranchWhatsAppConfigs() {
             const cfg = (supaConfigs || []).find((c: any) => c.branchId === b.id);
             const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || (b.code === 'SVV-1' ? '+91 77386 63866' : '+91 99515 27090');
             const city = b.city || (b.code === 'SVV-1' ? 'Isnapur' : 'Patancheru');
+            const isConn = cfg?.status === 'CONNECTED' || cfg?.status === 'ACTIVE';
 
             return {
               id: cfg?.id || `cfg-${b.id}`,
@@ -446,8 +447,8 @@ export function useBranchWhatsAppConfigs() {
               whatsappNumber: waNum,
               phoneNumber: waNum,
               displayName: cfg?.displayName || `${b.name} Print Desk`,
-              status: cfg?.status || 'ACTIVE',
-              isEnabled: cfg?.status !== 'INACTIVE',
+              status: isConn ? 'CONNECTED' : 'OFFLINE',
+              isEnabled: true,
               welcomeMessage: cfg?.welcomeMessage || `Welcome to ${b.name} Print Desk! Send your PDF or image documents here for instant printing.`,
             };
           });
