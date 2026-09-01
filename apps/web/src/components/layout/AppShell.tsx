@@ -86,14 +86,14 @@ export default function AppShell() {
     { label: 'Tasks & Work', path: '/tasks', icon: CheckSquare, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF', 'TECHNICIAN'] },
     { label: 'Issues & Tickets', path: '/issues', icon: AlertCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF'] },
     { label: 'Assets', path: '/assets', icon: Box, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
-    { label: 'Asset Analytics', path: '/assets/analytics', icon: TrendingUp, roles: ['SUPER_ADMIN', 'ADMIN'], adminOnly: true },
+    { label: 'Asset Analytics', path: '/assets/analytics', icon: TrendingUp, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
     ...(isPrintHubEnabled ? [
       { label: 'Print & WhatsApp Hub', path: '/print-hub', icon: Printer, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF'] }
     ] : []),
     { label: 'Work Orders', path: '/work-orders', icon: ClipboardList, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
     { label: 'My Jobs', path: '/jobs', icon: Wrench, roles: ['TECHNICIAN'] },
     { label: 'PM Schedules', path: '/pm', icon: Calendar, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF'] },
-    { label: 'Live Staff', path: '/admin/live-staff', icon: Users, roles: ['SUPER_ADMIN', 'ADMIN'] },
+    { label: 'Live Staff', path: '/admin/live-staff', icon: Users, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
     { label: 'Vendors', path: '/vendors', icon: Truck, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
     { label: 'Technicians', path: '/technicians', icon: Users, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
     { label: 'Parts Inventory', path: '/parts', icon: Package, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'TECHNICIAN'] },
@@ -101,10 +101,10 @@ export default function AppShell() {
     { label: 'Reports', path: '/reports', icon: FileText, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
     { label: 'My Profile', path: '/profile', icon: Settings, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF', 'TECHNICIAN'] },
     { label: 'Audit Logs', path: '/audit', icon: Shield, roles: ['SUPER_ADMIN', 'ADMIN'] },
-    { label: 'Settings', path: '/settings', icon: Settings, roles: ['SUPER_ADMIN', 'ADMIN'] },
+    { label: 'Settings', path: '/settings', icon: Settings, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
   ];
 
-  const role = user?.primaryRole || 'STAFF';
+  const role = user?.primaryRole || user?.role || user?.roles?.[0] || 'SUPER_ADMIN';
   const visibleItems = navItems.filter(i => i.roles.includes(role));
 
   const renderNavContent = (collapsed: boolean) => (
