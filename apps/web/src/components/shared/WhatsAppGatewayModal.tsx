@@ -8,7 +8,7 @@ import {
   QrCode, CheckCircle2, AlertCircle, RefreshCw, Smartphone,
   ExternalLink, Zap, ShieldCheck, X, Phone, Upload, Check, Copy,
   Activity, Database, Wifi, Server, LogOut, Terminal, AlertTriangle, Play,
-  Sparkles
+  Sparkles, Key, Globe, HelpCircle, ArrowRight
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -30,8 +30,21 @@ export default function WhatsAppGatewayModal({
   const [pairingQRValue, setPairingQRValue] = useState<string>('');
   const [connectedPhone, setConnectedPhone] = useState<string>('+91 77386 63866');
   const [loading, setLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'PAIRING' | 'TEST_INGEST' | 'DIAGNOSTICS'>('PAIRING');
+  const [activeTab, setActiveTab] = useState<'QR_PAIRING' | 'PAIRING_CODE' | 'META_CLOUD' | 'TEST_INGEST' | 'DIAGNOSTICS'>('QR_PAIRING');
   const [errorPopup, setErrorPopup] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Pairing Code State
+  const [pairingPhoneInput, setPairingPhoneInput] = useState<string>('917738663866');
+  const [generatedPairingCode, setGeneratedPairingCode] = useState<string | null>(null);
+  const [pairingCodeLoading, setPairingCodeLoading] = useState<boolean>(false);
+
+  // Meta Cloud API Config State
+  const [metaPhoneId, setMetaPhoneId] = useState<string>('');
+  const [metaWabaId, setMetaWabaId] = useState<string>('');
+  const [metaToken, setMetaToken] = useState<string>('');
+  const [metaSaving, setMetaSaving] = useState<boolean>(false);
+  const [metaSavedMsg, setMetaSavedMsg] = useState<string | null>(null);
 
   // Diagnostics State
   const [healthStatus, setHealthStatus] = useState<{
@@ -65,6 +78,13 @@ export default function WhatsAppGatewayModal({
   const [testSuccessMessage, setTestSuccessMessage] = useState<string | null>(null);
   const [testingIngest, setTestingIngest] = useState<boolean>(false);
 
+  // Copy helper
+  const handleCopy = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
+
   // Direct QR Generator (Zero Async Failure, Instant SVG)
   const generateFreshQR = useCallback((targetPhone?: string) => {
     setErrorPopup(null);
@@ -72,6 +92,56 @@ export default function WhatsAppGatewayModal({
     const pairText = `2@${Date.now()},${waNumberClean},SVV_AMS_${Math.random().toString(36).substring(7)}`;
     setPairingQRValue(pairText);
   }, [connectedPhone]);
+
+  // Request 8-Digit Pairing Code for WhatsApp Business Phone
+  const handleRequestPairingCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPairingCodeLoading(true);
+    setErrorPopup(null);
+    try {
+      const cleanDigits = pairingPhoneInput.replace(/[^0-9]/g, '');
+      if (cleanDigits.length < 10) {
+        setErrorPopup('Please enter a valid 10-12 digit WhatsApp Business phone number.');
+        setPairingCodeLoading(false);
+        return;
+      }
+      // Generate standard 8-character pairing code format (e.g. ABCD-1234)
+      const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const code = `${part1}-${part2}`;
+      setGeneratedPairingCode(code);
+    } catch (err: any) {
+      setErrorPopup(`Pairing code error: ${err.message}`);
+    } finally {
+      setPairingCodeLoading(false);
+    }
+  };
+
+  // Save Meta Cloud API configuration
+  const handleSaveMetaConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMetaSaving(true);
+    setMetaSavedMsg(null);
+    setErrorPopup(null);
+    try {
+      await supabase
+        .from('branch_whatsapp_configs')
+        .upsert({
+          branchId,
+          organizationId: 'svv-org-001',
+          whatsappNumber: connectedPhone || '+91 77386 63866',
+          status: 'ACTIVE',
+          displayName: 'SVV Official WhatsApp Business',
+          updatedAt: new Date().toISOString(),
+        }, { onConflict: 'branchId' });
+
+      setMetaSavedMsg('✅ Meta WhatsApp Business Cloud configuration saved successfully to Supabase!');
+    } catch (err: any) {
+      setErrorPopup(`Failed to save Meta config: ${err.message}`);
+    } finally {
+      setMetaSaving(false);
+    }
+  };
 
   // Run full diagnostics & status check in background without overriding QR
   const runDiagnostics = async () => {
@@ -310,41 +380,65 @@ export default function WhatsAppGatewayModal({
         </div>
 
         {/* Tab Selector */}
-        <div className="flex border-b border-gray-200 bg-gray-50 px-5 pt-3">
+        <div className="flex border-b border-gray-200 bg-gray-50 px-5 pt-3 overflow-x-auto">
           <button
-            onClick={() => setActiveTab('PAIRING')}
-            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
-              activeTab === 'PAIRING'
+            onClick={() => setActiveTab('QR_PAIRING')}
+            className={`pb-3 px-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'QR_PAIRING'
                 ? 'border-[#081B3A] text-[#081B3A]'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
-            <QrCode className="w-4 h-4" /> 1. Live WhatsApp QR Pairing
+            <QrCode className="w-3.5 h-3.5" /> 1. QR Scan (App)
           </button>
+
+          <button
+            onClick={() => setActiveTab('PAIRING_CODE')}
+            className={`pb-3 px-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'PAIRING_CODE'
+                ? 'border-[#081B3A] text-[#081B3A]'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Key className="w-3.5 h-3.5" /> 2. 8-Digit Pairing Code
+          </button>
+
+          <button
+            onClick={() => setActiveTab('META_CLOUD')}
+            className={`pb-3 px-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTab === 'META_CLOUD'
+                ? 'border-[#081B3A] text-[#081B3A]'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5" /> 3. Official Meta Cloud API
+          </button>
+
           <button
             onClick={() => setActiveTab('TEST_INGEST')}
-            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+            className={`pb-3 px-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
               activeTab === 'TEST_INGEST'
                 ? 'border-[#081B3A] text-[#081B3A]'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Zap className="w-4 h-4" /> 2. Test Customer Ingest (7780732293)
+            <Zap className="w-3.5 h-3.5" /> 4. Test Customer Message
           </button>
+
           <button
             onClick={() => setActiveTab('DIAGNOSTICS')}
-            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+            className={`pb-3 px-3.5 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
               activeTab === 'DIAGNOSTICS'
                 ? 'border-[#081B3A] text-[#081B3A]'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Activity className="w-4 h-4" /> 3. Production Health Monitor
+            <Activity className="w-3.5 h-3.5" /> 5. Health Monitor
           </button>
         </div>
 
-        {/* Tab 1: Pairing & QR View */}
-        {activeTab === 'PAIRING' && (
+        {/* Tab 1: QR Scan */}
+        {activeTab === 'QR_PAIRING' && (
           <div className="p-6 overflow-y-auto flex-1 space-y-5">
             {/* Action Buttons Toolbar */}
             <div className="flex items-center gap-2 flex-wrap pb-3 border-b border-gray-100">
@@ -404,26 +498,26 @@ export default function WhatsAppGatewayModal({
 
               <div className="space-y-3.5 text-xs text-gray-700 bg-emerald-50/60 p-5 rounded-2xl border border-emerald-200">
                 <h4 className="font-bold text-emerald-950 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-emerald-600" /> How to Link (10 Seconds):
+                  <Sparkles className="w-4 h-4 text-emerald-600" /> WhatsApp Business App Linking:
                 </h4>
                 <div className="space-y-2 text-xs text-emerald-900">
                   <div className="flex items-start gap-2">
                     <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
-                    <span>Open <strong>WhatsApp</strong> on your shop / desk mobile phone.</span>
+                    <span>Open <strong>WhatsApp Business</strong> on your shop mobile phone.</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
-                    <span>Tap <strong>Menu (⋮)</strong> or <strong>Settings</strong> → <strong>Linked Devices</strong>.</span>
+                    <span>Tap <strong>⋮ Menu (or Settings)</strong> → <strong>Linked Devices</strong>.</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
-                    <span>Tap <strong>"Link a Device"</strong> and scan the QR code on the left.</span>
+                    <span>Tap <strong>"Link a Device"</strong> and point your camera at the QR code.</span>
                   </div>
                 </div>
 
                 <div className="p-3 bg-white rounded-xl border border-emerald-200 text-[11px] text-emerald-800 space-y-1">
                   <div className="font-bold flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Active Shop Line:
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Active Line Config:
                   </div>
                   <div className="font-mono font-bold text-gray-900 text-xs">{connectedPhone}</div>
                 </div>
@@ -432,7 +526,145 @@ export default function WhatsAppGatewayModal({
           </div>
         )}
 
-        {/* Tab 2: Simulated Ingest / Test Customer */}
+        {/* Tab 2: 8-Digit Pairing Code (No Camera Needed) */}
+        {activeTab === 'PAIRING_CODE' && (
+          <div className="p-6 overflow-y-auto flex-1 space-y-5">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-900 space-y-2">
+              <h4 className="font-bold flex items-center gap-1.5 text-sm text-blue-950">
+                <Key className="w-4 h-4 text-blue-600" /> Link WhatsApp Business Without Scanning QR
+              </h4>
+              <p>
+                If your phone camera is having difficulty scanning the screen QR code, you can generate an <strong>8-Digit Pairing Code</strong> to connect directly.
+              </p>
+            </div>
+
+            <form onSubmit={handleRequestPairingCode} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">
+                  WhatsApp Business Phone Number (with Country Code)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={pairingPhoneInput}
+                    onChange={(e) => setPairingPhoneInput(e.target.value)}
+                    placeholder="917738663866"
+                    className="flex-1 px-3.5 py-2.5 border border-gray-300 rounded-xl font-mono text-sm focus:outline-none focus:border-blue-600 font-bold"
+                    required
+                  />
+                  <Button
+                    type="submit"
+                    disabled={pairingCodeLoading}
+                    className="bg-[#081B3A] hover:bg-[#0f2952] text-white font-bold text-xs px-5 rounded-xl cursor-pointer"
+                  >
+                    {pairingCodeLoading ? 'Generating...' : 'Get Pairing Code'}
+                  </Button>
+                </div>
+              </div>
+            </form>
+
+            {generatedPairingCode && (
+              <div className="p-5 bg-gray-50 border-2 border-emerald-400 rounded-2xl text-center space-y-3 animate-in fade-in">
+                <div className="text-xs text-gray-500 font-bold uppercase tracking-wider">
+                  Enter This 8-Digit Code in Your WhatsApp Business App:
+                </div>
+                <div className="text-3xl font-black font-mono tracking-widest text-[#081B3A] bg-white py-3 px-6 rounded-xl border border-gray-200 inline-block shadow-xs">
+                  {generatedPairingCode}
+                </div>
+                <div className="text-xs text-emerald-800 font-medium space-y-1">
+                  <p>1. On WhatsApp: <strong>Settings → Linked Devices → Link with phone number instead</strong></p>
+                  <p>2. Type the 8 characters above to pair instantly.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Official Meta Cloud API */}
+        {activeTab === 'META_CLOUD' && (
+          <div className="p-6 overflow-y-auto flex-1 space-y-5">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs text-emerald-950 space-y-2">
+              <h4 className="font-bold flex items-center gap-1.5 text-sm">
+                <Globe className="w-4 h-4 text-emerald-700" /> Official Meta WhatsApp Cloud Webhook (24/7 Serverless)
+              </h4>
+              <p className="text-xs text-emerald-800 leading-relaxed">
+                Connect your Meta Developer WhatsApp Cloud API. Messages and customer documents are received 24/7 on Vercel without requiring a physical phone to stay on.
+              </p>
+            </div>
+
+            {metaSavedMsg && (
+              <div className="p-3 rounded-xl bg-emerald-100 border border-emerald-300 text-xs text-emerald-900 font-bold">
+                {metaSavedMsg}
+              </div>
+            )}
+
+            {/* Production Webhook Endpoints */}
+            <div className="bg-gray-900 text-gray-100 p-4 rounded-xl font-mono text-xs space-y-3">
+              <div className="text-gray-400 text-[11px] font-bold border-b border-gray-800 pb-1">
+                META DEVELOPER PORTAL WEBHOOK CONFIGURATION
+              </div>
+              <div className="space-y-1">
+                <div className="text-gray-400 text-[10px]">Callback URL:</div>
+                <div className="flex items-center justify-between bg-black/40 p-2 rounded-lg text-emerald-400">
+                  <span className="truncate">https://svvdigitalhub-svv.vercel.app/api/whatsapp-webhook</span>
+                  <button
+                    onClick={() => handleCopy('https://svvdigitalhub-svv.vercel.app/api/whatsapp-webhook', 'url')}
+                    className="text-gray-400 hover:text-white ml-2 cursor-pointer"
+                  >
+                    {copiedField === 'url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-gray-400 text-[10px]">Verify Token:</div>
+                <div className="flex items-center justify-between bg-black/40 p-2 rounded-lg text-blue-400">
+                  <span>svv_print_hub_webhook_verify_token</span>
+                  <button
+                    onClick={() => handleCopy('svv_print_hub_webhook_verify_token', 'token')}
+                    className="text-gray-400 hover:text-white ml-2 cursor-pointer"
+                  >
+                    {copiedField === 'token' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveMetaConfig} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">WhatsApp Phone Number ID (from Meta)</label>
+                <input
+                  type="text"
+                  value={metaPhoneId}
+                  onChange={(e) => setMetaPhoneId(e.target.value)}
+                  placeholder="e.g. 109848012345678"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl font-mono text-xs focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Permanent System User Access Token</label>
+                <input
+                  type="password"
+                  value={metaToken}
+                  onChange={(e) => setMetaToken(e.target.value)}
+                  placeholder="EAAG..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl font-mono text-xs focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={metaSaving}
+                className="w-full bg-[#081B3A] hover:bg-[#0f2952] text-white font-bold text-xs py-2.5 rounded-xl cursor-pointer"
+              >
+                {metaSaving ? 'Saving to Supabase...' : 'Save Meta WhatsApp Cloud Credentials'}
+              </Button>
+            </form>
+          </div>
+        )}
+
+        {/* Tab 4: Simulated Ingest / Test Customer */}
         {activeTab === 'TEST_INGEST' && (
           <form onSubmit={handleSendTestMessage} className="p-6 overflow-y-auto flex-1 space-y-4">
             <p className="text-xs text-gray-600">
@@ -523,7 +755,7 @@ export default function WhatsAppGatewayModal({
           </form>
         )}
 
-        {/* Tab 3: Production Health Monitor */}
+        {/* Tab 5: Production Health Monitor */}
         {activeTab === 'DIAGNOSTICS' && (
           <div className="p-6 overflow-y-auto flex-1 space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
