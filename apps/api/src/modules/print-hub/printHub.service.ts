@@ -297,6 +297,16 @@ export async function processIncomingWhatsAppMessage(params: {
     },
   });
 
+  const now = new Date();
+  const receivedTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isPVC = messageText.toLowerCase().includes('pvc') || messageText.toLowerCase().includes('card');
+  const isPhoto = messageText.toLowerCase().includes('photo') || messageText.toLowerCase().includes('passport');
+  const defaultPrice = isPVC ? 100 : (isPhoto ? 50 : 20);
+  const rawDigits10 = digits.slice(-10);
+
+  let createdOrder: any = null;
+  let autoReplyText = '';
+
   // 1. Group ONLY consecutive multi-page files sent within a 2-minute burst (120s) for a PENDING order
   const TWO_MINUTES_AGO = new Date(Date.now() - 2 * 60 * 1000);
   const activeOrdersList = await prisma.printOrder.findMany({
@@ -353,7 +363,7 @@ export async function processIncomingWhatsAppMessage(params: {
         customerName,
         customerPhone: formattedPhone,
         source: 'WHATSAPP',
-        documentUrl: params.mediaUrl || null,
+        documentUrl: params.mediaUrl || '',
         documentName: docName,
         pageCount: 1,
         copies: 1,
@@ -421,17 +431,7 @@ export async function processIncomingWhatsAppMessage(params: {
     }]);
   } catch (supaSyncErr) {
     console.warn('Supabase sync warning:', supaSyncErr);
-  }enderName,
-        messageBody: incomingMsg.messageBody,
-        mediaUrl: incomingMsg.mediaUrl,
-        mediaType: incomingMsg.mediaType,
-        isIncoming: true,
-        orderId: createdOrder?.id || null,
-        createdAt: incomingMsg.createdAt,
-      }]);
-    } catch (supaSyncErr) {
-      console.warn('Supabase sync warning:', supaSyncErr);
-    }
+  }
 
     // Send automated WhatsApp acknowledgement to customer
     if (autoReplyText) {
@@ -473,14 +473,13 @@ export async function processIncomingWhatsAppMessage(params: {
         }]);
       } catch (_) {}
     }
-  }
 
-  return {
-    incomingMessage: incomingMsg,
-    order: createdOrder,
-    autoReplySent: autoReplyText,
-  };
-}
+    return {
+      incomingMessage: incomingMsg,
+      order: createdOrder,
+      autoReplySent: autoReplyText,
+    };
+  }
 
 export async function createWhatsAppMessage(orgId: string, data: {
   branchId: string;
