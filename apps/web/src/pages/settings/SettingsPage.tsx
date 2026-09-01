@@ -14,8 +14,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import EditUserModal from './EditUserModal';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
+import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
 
-type Tab = 'users' | 'roles' | 'modules' | 'organization';
+type Tab = 'users' | 'roles' | 'modules' | 'sessions' | 'organization';
 
 function getInitials(name: string) {
   if (!name) return '??';
@@ -32,6 +33,16 @@ export default function SettingsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterBranch, setFilterBranch] = useState('');
   const [filterRole, setFilterRole] = useState('');
+  const [selectedSessionBranchId, setSelectedSessionBranchId] = useState<string | null>(null);
+  const [localBranches, setLocalBranches] = useState<any[]>(() => {
+    try {
+      const local = localStorage.getItem('svv_branches_store');
+      return local ? JSON.parse(local) : [
+        { id: 'f5abaacc-d2b6-4591-91fb-314b2188e18c', name: 'SVV Main Hub', code: 'SVV-1', city: 'Isnapur', sessionStatus: 'OFFLINE' },
+        { id: 'branch-2', name: 'SVV Digital Desk', code: 'SVV-2', city: 'Patancheru', sessionStatus: 'OFFLINE' }
+      ];
+    } catch { return []; }
+  });
 
   const { user } = useAuthStore();
   const { data: usersData, isLoading, isError, error, refetch } = useUsers({
@@ -76,6 +87,7 @@ export default function SettingsPage() {
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'users', label: 'Team & User Directory', icon: <Users className="w-4 h-4" /> },
     { key: 'roles', label: 'Roles & Permissions Matrix', icon: <Shield className="w-4 h-4" /> },
+    { key: 'sessions', label: 'Admin WhatsApp Sessions Matrix', icon: <MessageSquare className="w-4 h-4 text-emerald-600" /> },
     { key: 'modules', label: 'Module Management (Plugins)', icon: <Sparkles className="w-4 h-4 text-amber-500" /> },
     { key: 'organization', label: 'Organization Profile', icon: <Settings className="w-4 h-4" /> },
   ];
@@ -499,6 +511,93 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {/* ── WHATSAPP SESSIONS MATRIX (ADMIN CONTROL PANEL) ───────────────── */}
+      {activeTab === 'sessions' && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-2xs overflow-hidden">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">Branch WhatsApp Web Sessions (Admin Control Panel)</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Real-time status, linked devices, and multi-branch connection controls.</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const local = localStorage.getItem('svv_branches_store');
+                if (local) setLocalBranches(JSON.parse(local));
+              }}
+              className="text-xs font-semibold h-8"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh Matrix
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold uppercase text-[10px]">
+                  <th className="py-3 px-4">Branch</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Linked Device / Phone</th>
+                  <th className="py-3 px-4">Protocol</th>
+                  <th className="py-3 px-4">Last Sync</th>
+                  <th className="py-3 px-4 text-right">Admin Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 font-sans">
+                {localBranches.map((b: any) => {
+                  const isConn = b.sessionStatus === 'CONNECTED' && b.whatsappNumber;
+                  return (
+                    <tr key={b.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-gray-900">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-[#1e3a5f]" />
+                          <span>{b.name}</span>
+                          <span className="text-[10px] text-gray-400 font-mono">({b.code})</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {isConn ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5" />
+                            Connected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5" />
+                            Disconnected
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-gray-800">
+                        {isConn ? b.whatsappNumber : <span className="text-gray-400 font-sans font-normal italic">Not Linked</span>}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-500">
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-100">Noise WebSockets (Baileys)</span>
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-500">
+                        {isConn ? 'Live Real-time' : '—'}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => setSelectedSessionBranchId(b.id)}
+                            className="h-7 text-[11px] font-bold bg-[#1e3a5f] hover:bg-[#172d4a] text-white rounded-lg cursor-pointer"
+                          >
+                            {isConn ? 'Manage Session' : 'Scan QR & Link'}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Create / Edit User Modal */}
       {(editingUser || isCreateModalOpen) && (
         <EditUserModal
@@ -506,6 +605,23 @@ export default function SettingsPage() {
           onClose={() => {
             setEditingUser(null);
             setIsCreateModalOpen(false);
+          }}
+        />
+      )}
+
+      {/* Admin WhatsApp Gateway Modal */}
+      {selectedSessionBranchId && (
+        <WhatsAppGatewayModal
+          open={!!selectedSessionBranchId}
+          onClose={() => {
+            setSelectedSessionBranchId(null);
+            const local = localStorage.getItem('svv_branches_store');
+            if (local) setLocalBranches(JSON.parse(local));
+          }}
+          branchId={selectedSessionBranchId}
+          onOrderCreated={() => {
+            const local = localStorage.getItem('svv_branches_store');
+            if (local) setLocalBranches(JSON.parse(local));
           }}
         />
       )}
