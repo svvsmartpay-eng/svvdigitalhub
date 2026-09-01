@@ -39,6 +39,7 @@ import AdvertisementsPage from './pages/print-hub/AdvertisementsPage';
 import BranchQRCodesPage from './pages/print-hub/BranchQRCodesPage';
 import PrintAnalyticsPage from './pages/print-hub/PrintAnalyticsPage';
 import SystemDiagnosticsPage from './pages/admin/SystemDiagnosticsPage';
+import BranchListPage from './pages/branches/BranchListPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const accessToken = useAuthStore(s => s.accessToken);
@@ -61,6 +62,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'branches', element: <BranchListPage /> },
       { path: 'profile', element: <UserProfilePage /> },
       // Internal Tasks (Operational Work Assignments)
       { path: 'tasks', element: <TaskListPage /> },

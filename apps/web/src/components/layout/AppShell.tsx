@@ -81,6 +81,7 @@ export default function AppShell() {
 
   const navItems = [
     { label: 'Dashboard', path: '/dashboard', icon: BarChart3, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF', 'TECHNICIAN'] },
+    { label: 'Branches', path: '/branches', icon: Building2, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
     { label: 'Tasks & Work', path: '/tasks', icon: CheckSquare, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF', 'TECHNICIAN'] },
     { label: 'Issues & Tickets', path: '/issues', icon: AlertCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF'] },
     { label: 'Assets', path: '/assets', icon: Box, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
