@@ -86,7 +86,7 @@ export async function startBranchWhatsAppSession(orgId: string, branchId: string
     auth: state,
     logger: pino({ level: 'silent' }),
     printQRInTerminal: false,
-    browser: ['SVV AMS Print Desk', 'Chrome', '1.0.0'],
+    browser: ['Ubuntu', 'Chrome', '20.0.04'],
     syncFullHistory: false,
   });
   sessionObj.sock = sock;
@@ -100,8 +100,9 @@ export async function startBranchWhatsAppSession(orgId: string, branchId: string
       try {
         const qrUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
         sessionObj.qrCodeDataUrl = qrUrl;
+        (sessionObj as any).rawQr = qr;
         sessionObj.status = 'SCAN_QR_REQUIRED';
-        console.log(`[WhatsApp Gateway] QR Code generated for branch ${branchId}`);
+        console.log(`[WhatsApp Gateway] Official WhatsApp Web Noise QR generated for branch ${branchId}`);
       } catch (err) {
         console.error('Failed to generate QR data URL', err);
       }
@@ -357,6 +358,7 @@ export function getBranchWhatsAppStatus(branchId: string) {
   return {
     status: session.status,
     qrCodeDataUrl: session.qrCodeDataUrl,
+    rawQr: (session as any).rawQr || null,
     connectedPhone: session.connectedPhone,
     lastError: session.lastError,
   };
