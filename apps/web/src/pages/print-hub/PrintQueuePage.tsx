@@ -15,7 +15,7 @@ import {
   LayoutGrid, List, ChevronLeft, ChevronRight, 
   RotateCw, ZoomIn, ZoomOut, Maximize2, Eye, Crop,
   SlidersHorizontal, ChevronDown, Check, ArrowRight, Files,
-  Copy, MessageSquare, PhoneCall, Smartphone, AlertCircle
+  Copy, MessageSquare, PhoneCall, Smartphone, AlertCircle, Building2
 } from 'lucide-react';
 
 export default function PrintQueuePage() {
@@ -71,6 +71,8 @@ export default function PrintQueuePage() {
   const [copies, setCopies] = useState(1);
   const [pdfPageCountsMap, setPdfPageCountsMap] = useState<Record<string, number>>({});
   const [activeChatOrder, setActiveChatOrder] = useState<any | null>(null);
+  const [showNextTicketModal, setShowNextTicketModal] = useState<boolean>(false);
+  const [justCompletedTicket, setJustCompletedTicket] = useState<any | null>(null);
 
   // Copy to Clipboard Feedback State
   const [copyToast, setCopyToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
@@ -233,6 +235,11 @@ export default function PrintQueuePage() {
       const docCount = docItems.filter((d) => d.type === 'DOC').length;
       const totalFiles = docItems.length;
       const totalPages = docItems.reduce((sum, d) => sum + (d.pageCount || 1), 0);
+      const branchName = ord.branch?.name || (ord.branchId?.includes('f5abaacc') ? 'SVV Main Hub' : 'SVV Branch 2');
+      const branchCode = ord.branch?.code || 'SVV-1';
+      const assignedStaffName = ord.assignedStaff?.name || ord.assignedStaffName || (ord.assignedStaffId ? (currentUser?.id === ord.assignedStaffId ? currentUser.name : 'Staff User 1') : 'Unassigned');
+      const assignedStaffRole = ord.assignedStaff?.role || (ord.assignedStaffId ? 'Staff Desk' : 'Unassigned');
+      const startedAt = ord.updatedAt && (ord.status === 'PRINTING' || ord.status === 'IN PROGRESS') ? new Date(ord.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
 
       return {
         ...ord,
@@ -244,9 +251,13 @@ export default function PrintQueuePage() {
         imageCount,
         pdfCount,
         docCount,
+        branchName,
+        branchCode,
+        assignedStaffName,
+        assignedStaffRole,
+        startedAt,
         timeFormatted: new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        assignedStaffName: ord.assignedStaff?.name || ord.assignedStaffName || 'Unassigned',
-        isLockedByOther: Boolean(ord.assignedStaffId && currentUser?.id && ord.assignedStaffId !== currentUser.id && ord.status === 'PRINTING'),
+        isLockedByOther: Boolean(ord.assignedStaffId && currentUser?.id && ord.assignedStaffId !== currentUser.id && (ord.status === 'PRINTING' || ord.status === 'IN PROGRESS')),
         rawDate: new Date(ord.createdAt),
       };
     });
@@ -326,7 +337,16 @@ export default function PrintQueuePage() {
 
   const handleCompleteWork = (order: any) => {
     if (order.id && !order.id.startsWith('mock-')) {
-      updateStatusMutation.mutate({ id: order.id, status: 'DELIVERED', staffId: currentUser?.id }, { onSuccess: () => { refetch(); refetchWhatsApp(); } });
+      updateStatusMutation.mutate({ 
+        id: order.id, 
+        status: 'DELIVERED', 
+        staffId: currentUser?.id || 'usr-1' 
+      }, { 
+        onSuccess: () => { 
+          refetch(); 
+          refetchWhatsApp(); 
+        } 
+      });
     }
     setShowPrintVerifyModal(false);
   };
@@ -334,8 +354,20 @@ export default function PrintQueuePage() {
   const handlePrintVerifiedSuccess = () => {
     if (lastPrintedJob) {
       handleCompleteWork(lastPrintedJob);
+      setJustCompletedTicket(lastPrintedJob);
+      setShowPrintVerifyModal(false);
+      setShowNextTicketModal(true);
     }
-    setShowPrintVerifyModal(false);
+  };
+
+  const handleOpenNextTicket = () => {
+    setShowNextTicketModal(false);
+    // Find next pending or ready ticket in queue
+    const nextOrder = filteredOrders.find((o) => (o.status === 'PENDING' || o.status === 'NEW') && o.id !== justCompletedTicket?.id);
+    if (nextOrder) {
+      setSelectedOrderId(nextOrder.id || nextOrder.tokenNumber);
+      handleStartWork(nextOrder);
+    }
   };
 
   const handleDirectPrint = async (order: any) => {
@@ -493,16 +525,6 @@ export default function PrintQueuePage() {
               <span>List / 3-Panel</span>
             </button>
           </div>
-
-          {/* WhatsApp Gateway Pairing Button */}
-          <Button
-            size="sm"
-            onClick={() => setShowGatewayModal(true)}
-            className="bg-[#198754] hover:bg-[#157347] text-[#FFFFFF] text-xs font-bold h-10 px-3.5 rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
-            title="Scan QR Code to connect shop WhatsApp number"
-          >
-            <Smartphone className="w-4 h-4" /> 📱 Link WhatsApp
-          </Button>
 
           <Button
             size="sm"
@@ -756,16 +778,29 @@ export default function PrintQueuePage() {
                       )}
                     </div>
 
-                    {/* 6. Footer: Received Time & Assigned Staff */}
-                    <div className="flex items-center justify-between text-xs text-[#6B7280] font-medium pt-1 font-mono">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-[#9CA3AF]" />
-                        <span>{ord.timeFormatted}</span>
-                      </span>
-                      <span className="flex items-center gap-1 text-[#081B3A] font-semibold truncate max-w-[110px] font-sans">
-                        <User className="w-3.5 h-3.5 text-[#9CA3AF]" />
-                        <span>{ord.assignedStaffName}</span>
-                      </span>
+                    {/* 6. Footer: Branch, Staff Role & Received/Started Time */}
+                    <div className="pt-2 border-t border-[#F1F5F9] space-y-1 text-[11px]">
+                      <div className="flex items-center justify-between text-[#6B7280]">
+                        <span className="flex items-center gap-1 font-semibold text-[#081B3A] truncate">
+                          <Building2 className="w-3.5 h-3.5 text-[#0D6EFD] shrink-0" />
+                          <span>{ord.branchName} ({ord.branchCode})</span>
+                        </span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Active Desk
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[#6B7280] font-mono">
+                        <span className="flex items-center gap-1 text-[#081B3A] font-semibold truncate font-sans">
+                          <User className="w-3.5 h-3.5 text-[#6B7280] shrink-0" />
+                          <span>{ord.assignedStaffName}</span>
+                          <span className="text-[10px] text-[#9CA3AF]">({ord.assignedStaffRole})</span>
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px]">
+                          <Clock className="w-3 h-3 text-[#9CA3AF]" />
+                          <span>{ord.timeFormatted}</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1356,35 +1391,38 @@ export default function PrintQueuePage() {
         </div>
       )}
 
-      {/* ── PRINT VERIFICATION POPUP MODAL ───────────────────────────────────── */}
+      {/* ── PRINT CONFIRMATION POPUP MODAL ───────────────────────────────────── */}
       {showPrintVerifyModal && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-[#FFFFFF] border border-[#E2E8F0] p-6 rounded-2xl max-w-md w-full mx-4 shadow-xl space-y-4 font-sans select-none">
-            <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0]">
-              <div className="flex items-center gap-2.5 text-[#0D6EFD] font-bold text-base">
-                <Printer className="w-5 h-5" />
-                <span>Print Verification</span>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-xs animate-in fade-in select-none">
+          <div className="bg-[#FFFFFF] border border-[#CBD5E1] p-6 rounded-3xl max-w-md w-full mx-4 shadow-2xl space-y-4 font-sans">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <div className="flex items-center gap-2 text-[#081B3A] font-bold text-base">
+                <Printer className="w-5 h-5 text-[#0D6EFD]" />
+                <span>PRINT CONFIRMATION</span>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full font-mono text-xs font-bold bg-[#E7F1FF] text-[#0D6EFD] border border-[#B6D4FE]">
+              <span className="px-3 py-1 rounded-full font-mono text-xs font-bold bg-[#E7F1FF] text-[#0D6EFD] border border-[#B6D4FE]">
                 {lastPrintedJob?.tokenNumber || 'Token'}
               </span>
             </div>
 
             <div className="py-2 space-y-2 text-center">
-              <h4 className="text-base font-bold text-[#081B3A]">
-                Did the document print successfully?
+              <div className="w-14 h-14 rounded-2xl bg-[#E8F5E9] text-[#198754] flex items-center justify-center mx-auto border border-[#A7F3D0]">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <h4 className="text-lg font-black text-[#081B3A]">
+                Print Successful?
               </h4>
               <p className="text-xs text-[#6B7280]">
-                Please check the printer output tray before confirming order completion.
+                Please check the printer output tray before moving ticket to Completed.
               </p>
             </div>
 
-            <div className="space-y-2 pt-2">
+            <div className="space-y-2.5 pt-2">
               <button
                 onClick={handlePrintVerifiedSuccess}
-                className="w-full py-3 rounded-xl bg-[#198754] hover:bg-[#157347] text-[#FFFFFF] font-bold text-xs shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3.5 rounded-2xl bg-[#198754] hover:bg-[#157347] text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
               >
-                <CheckCircle2 className="w-4 h-4" /> ✅ Yes - Print Successful
+                <CheckCircle2 className="w-4 h-4" /> YES - Confirm Completed
               </button>
 
               <div className="grid grid-cols-2 gap-2">
@@ -1393,21 +1431,70 @@ export default function PrintQueuePage() {
                     if (lastPrintedJob) {
                       const docItemsToPrint = lastPrintedJob.docItems && lastPrintedJob.docItems.length > 0
                         ? lastPrintedJob.docItems
-                        : [{ url: lastPrintedJob.documentUrl || '/uploads/doc.pdf', type: lastPrintedJob.documentName?.endsWith('.pdf') ? 'PDF' : 'IMAGE', name: lastPrintedJob.documentName }];
+                        : [{ url: lastPrintedJob.documentUrl, type: lastPrintedJob.documentName?.endsWith('.pdf') ? 'PDF' : 'IMAGE', name: lastPrintedJob.documentName }];
                       await directPrintFiles(docItemsToPrint, lastPrintedJob.tokenNumber || 'T-101');
                     }
                   }}
-                  className="py-2.5 rounded-xl bg-[#E9ECEF] hover:bg-[#DEE2E6] text-[#0D6EFD] font-semibold text-xs border border-[#CED4DA] flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="py-3 rounded-2xl bg-[#FFF7ED] hover:bg-[#FFEDD5] text-[#EA580C] font-bold text-xs border border-[#FED7AA] flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <RotateCw className="w-3.5 h-3.5" /> 🔄 Retry Print
+                  <RotateCw className="w-3.5 h-3.5" /> REPRINT
                 </button>
                 <button
                   onClick={() => setShowPrintVerifyModal(false)}
-                  className="py-2.5 rounded-xl bg-[#FFF4EC] hover:bg-[#FED7AA] text-[#EA580C] font-semibold text-xs border border-[#FDBA74] flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="py-3 rounded-2xl bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#6B7280] font-bold text-xs border border-[#CBD5E1] flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <X className="w-3.5 h-3.5" /> ❌ No - Keep Open
+                  <X className="w-3.5 h-3.5" /> CANCEL
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── WORK COMPLETED - OPEN NEXT TICKET MODAL ─────────────────────────── */}
+      {showNextTicketModal && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in select-none">
+          <div className="bg-[#FFFFFF] border border-[#CBD5E1] p-6 md:p-8 rounded-3xl max-w-md w-full mx-4 shadow-2xl space-y-5 text-center font-sans">
+            <div className="w-16 h-16 rounded-3xl bg-[#E8F5E9] text-[#198754] flex items-center justify-center mx-auto border border-[#A7F3D0] shadow-md">
+              <CheckCircle2 className="w-9 h-9" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-xl font-black text-[#081B3A]">✅ Work Completed</h3>
+              <p className="text-xs text-[#6B7280]">
+                Ticket <strong className="text-[#0D6EFD] font-mono">{justCompletedTicket?.tokenNumber}</strong> marked completed. Open next ticket?
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] text-xs text-left space-y-1.5 font-mono">
+              <div className="flex justify-between text-[#6B7280]">
+                <span>Printed By:</span>
+                <strong className="text-[#081B3A]">{currentUser?.name || 'Staff User 1'}</strong>
+              </div>
+              <div className="flex justify-between text-[#6B7280]">
+                <span>Branch:</span>
+                <strong className="text-[#081B3A]">{justCompletedTicket?.branchName || 'SVV Main Hub'} ({justCompletedTicket?.branchCode || 'SVV-1'})</strong>
+              </div>
+              <div className="flex justify-between text-[#6B7280]">
+                <span>Total Pages:</span>
+                <strong className="text-[#081B3A]">{justCompletedTicket?.totalPages || 1} pages</strong>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <Button
+                onClick={handleOpenNextTicket}
+                className="w-full h-12 rounded-2xl bg-[#0D6EFD] hover:bg-[#0b5ed7] text-white font-bold text-xs shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <ArrowRight className="w-4 h-4" /> Open Next Ticket
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowNextTicketModal(false)}
+                className="w-full h-10 rounded-2xl text-xs font-bold text-[#6B7280] border-[#CBD5E1] cursor-pointer"
+              >
+                Return to Queue
+              </Button>
             </div>
           </div>
         </div>

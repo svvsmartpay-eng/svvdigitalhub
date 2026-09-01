@@ -2927,39 +2927,65 @@ export default function WhatsAppInboxPage() {
 
       {/* ── STAGE 4: COMPLETED MODAL ────────────────────────────────────────── */}
       {showCompletedModal && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-[#FFFFFF] border border-[#CBD5E1] p-6 rounded-2xl max-w-md w-full mx-4 shadow-2xl space-y-4 font-sans select-none text-center">
-            <div className="w-12 h-12 rounded-full bg-[#E8F5E9] text-[#198754] border border-[#86EFAC] flex items-center justify-center mx-auto shadow-xs">
-              <CheckCircle2 className="w-6 h-6" />
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in select-none">
+          <div className="bg-[#FFFFFF] border border-[#CBD5E1] p-6 md:p-8 rounded-3xl max-w-md w-full mx-4 shadow-2xl space-y-4 font-sans text-center">
+            <div className="w-16 h-16 rounded-3xl bg-[#E8F5E9] text-[#198754] border border-[#86EFAC] flex items-center justify-center mx-auto shadow-md">
+              <CheckCircle2 className="w-8 h-8" />
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-base font-bold text-[#081B3A]">
-                Stage 4: Completed Successfully!
+              <h3 className="text-xl font-black text-[#081B3A]">
+                ✅ Work Completed!
               </h3>
               <p className="text-xs text-[#6B7280]">
-                Ticket <strong className="text-[#0D6EFD] font-mono">{activeJob?.tokenNumber}</strong> for <strong>{activeJob?.customerName}</strong> has been printed.
+                Ticket <strong className="text-[#0D6EFD] font-mono">{activeJob?.tokenNumber}</strong> for <strong>{activeJob?.customerName}</strong> marked completed.
               </p>
             </div>
 
-            <div className="space-y-2 pt-2">
-              <button
-                onClick={() => {
-                  handle1ClickPrint();
-                }}
-                className="w-full py-2.5 rounded-xl bg-[#E7F1FF] hover:bg-[#DBEAFE] text-[#0D6EFD] border border-[#B6D4FE] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <RotateCw className="w-3.5 h-3.5" /> 🔄 Reprint Document
-              </button>
+            <div className="p-3.5 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] text-xs text-left space-y-1.5 font-mono">
+              <div className="flex justify-between text-[#6B7280]">
+                <span>Printed By:</span>
+                <strong className="text-[#081B3A]">{operatorName}</strong>
+              </div>
+              <div className="flex justify-between text-[#6B7280]">
+                <span>Branch:</span>
+                <strong className="text-[#081B3A]">SVV Main Hub (SVV-1)</strong>
+              </div>
+              <div className="flex justify-between text-[#6B7280]">
+                <span>Print Mode:</span>
+                <strong className="text-[#081B3A]">{printMode} · {printCopies} copy</strong>
+              </div>
+            </div>
 
+            <div className="space-y-2 pt-1">
               <button
                 onClick={() => {
                   window.location.href = '/print-hub/queue';
                 }}
-                className="w-full py-3 rounded-xl bg-[#0D6EFD] hover:bg-[#0b5ed7] text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full h-12 rounded-2xl bg-[#0D6EFD] hover:bg-[#0b5ed7] text-white font-bold text-xs shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
               >
-                📋 Return to Ticket Queue
+                <ArrowRight className="w-4 h-4" /> 🚀 Open Next Ticket in Queue
               </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    handle1ClickPrint();
+                  }}
+                  className="py-2.5 rounded-xl bg-[#FFF7ED] hover:bg-[#FFEDD5] text-[#EA580C] border border-[#FED7AA] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCw className="w-3.5 h-3.5" /> Reprint
+                </button>
+
+                <button
+                  onClick={() => {
+                    window.location.href = '/print-hub/queue';
+                  }}
+                  className="py-2.5 rounded-xl bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#6B7280] border border-[#CBD5E1] font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  Return to Queue
+                </button>
+              </div>
             </div>
           </div>
         </div>
