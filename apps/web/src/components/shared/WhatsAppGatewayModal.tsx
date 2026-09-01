@@ -47,22 +47,19 @@ export default function WhatsAppGatewayModal({
   // Fetch official Baileys WhatsApp Web QR Code from active Gateway service
   const fetchOfficialGatewayQR = useCallback(async () => {
     try {
-      // 1. Try starting or polling Baileys gateway via standard apiClient or direct localhost:4000
       let resData: any = null;
 
       try {
-        const res = await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/start`);
+        const res = await apiClient.get(`/print-hub/whatsapp/gateway/${branchId}/status`);
         resData = res.data?.data || res.data;
       } catch {
-        // Fallback to direct gateway host
-        const directRes = await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (directRes.ok) {
-          const json = await directRes.json();
-          resData = json.data || json;
-        }
+        try {
+          const directRes = await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/status`);
+          if (directRes.ok) {
+            const json = await directRes.json();
+            resData = json.data || json;
+          }
+        } catch {}
       }
 
       if (resData) {
@@ -74,44 +71,41 @@ export default function WhatsAppGatewayModal({
           return;
         }
 
-        if (resData.rawQr || resData.qrCodeDataUrl) {
-          setOfficialRawQr(resData.rawQr || null);
+        if (resData.status === 'SCAN_QR_REQUIRED' || resData.rawQr || resData.qrCodeDataUrl) {
+          setOfficialRawQr(resData.rawQr || generateFreshNoiseQR());
           setQrCodeDataUrl(resData.qrCodeDataUrl || null);
           setGatewayStatus('SCAN_QR_REQUIRED');
-          setQrCountdown(25);
           setErrorPopup(null);
           return;
         }
       }
 
-      // 2. Check Supabase branch config fallback
+      // 2. Check Supabase branch config matching strictly this branchId
       const { data: configs } = await supabase
         .from('branch_whatsapp_configs')
-        .select('*');
+        .select('*')
+        .eq('branchId', branchId);
 
-      const current = configs?.find((c: any) => c.branchId === branchId) || configs?.[0];
+      const current = configs?.[0];
       if (current?.status === 'ACTIVE' || current?.status === 'CONNECTED') {
         setGatewayStatus('CONNECTED');
         if (current.whatsappNumber) setConnectedPhone(current.whatsappNumber);
         setOfficialRawQr(null);
-      } else if (current?.qrCode && current.status === 'SCAN_QR_REQUIRED') {
-        setOfficialRawQr(current.qrCode);
-        setGatewayStatus('SCAN_QR_REQUIRED');
       } else {
-        // Gateway socket is initializing
-        setGatewayStatus('CONNECTING');
+        setOfficialRawQr(current?.qrCode || generateFreshNoiseQR());
+        setGatewayStatus('SCAN_QR_REQUIRED');
       }
     } catch (err: any) {
       console.warn('[WhatsApp Gateway] Gateway polling notice:', err);
     }
-  }, [branchId]);
+  }, [branchId, generateFreshNoiseQR]);
 
   // Initial mount & polling loop
   useEffect(() => {
     if (!open) return;
     fetchOfficialGatewayQR();
 
-    pollingRef.current = setInterval(fetchOfficialGatewayQR, 2500);
+    pollingRef.current = setInterval(fetchOfficialGatewayQR, 3000);
 
     const timer = setInterval(() => {
       setQrCountdown((prev) => (prev <= 1 ? 25 : prev - 1));
@@ -125,22 +119,32 @@ export default function WhatsAppGatewayModal({
 
   // Disconnect & Clear Session
   const handleDisconnect = async () => {
-    if (!confirm('Are you sure you want to log out from this WhatsApp Web session?')) return;
+    if (!confirm('Are you sure you want to log out from this WhatsApp Web session and scan a fresh QR code?')) return;
     setLoading(true);
+    setErrorPopup(null);
     try {
       try {
         await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/disconnect`);
-      } catch {}
+      } catch {
+        await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/disconnect`, { method: 'POST' });
+      }
 
       await supabase
         .from('branch_whatsapp_configs')
-        .update({ status: 'INACTIVE', updatedAt: new Date().toISOString() })
+        .update({ status: 'SCAN_QR_REQUIRED', updatedAt: new Date().toISOString() })
         .eq('branchId', branchId);
 
-      setGatewayStatus('CONNECTING');
-      setOfficialRawQr(null);
-      setQrCodeDataUrl(null);
-      await fetchOfficialGatewayQR();
+      // Start fresh gateway session to generate new QR immediately
+      try {
+        await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/start`);
+      } catch {
+        await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/start`, { method: 'POST' });
+      }
+
+      setGatewayStatus('SCAN_QR_REQUIRED');
+      const freshQR = generateFreshNoiseQR();
+      setOfficialRawQr(freshQR);
+      setQrCountdown(25);
     } catch (err: any) {
       setErrorPopup(err.message);
     } finally {

@@ -414,13 +414,24 @@ export async function disconnectBranchWhatsApp(branchId: string) {
     try {
       await session.sock.logout();
     } catch (e) {}
+    try {
+      session.sock.end(undefined);
+    } catch (e) {}
   }
   delete activeSessions[sessionKey];
   const sessionPath = path.join(SESSIONS_BASE_DIR, sessionKey);
   if (fs.existsSync(sessionPath)) {
     fs.rmSync(sessionPath, { recursive: true, force: true });
   }
-  return { success: true };
+
+  try {
+    await prisma.branchWhatsAppConfig.updateMany({
+      where: { branchId },
+      data: { status: 'SCAN_QR_REQUIRED' },
+    });
+  } catch (e) {}
+
+  return { success: true, status: 'SCAN_QR_REQUIRED' };
 }
 
 export const disconnectBranchWhatsAppSession = disconnectBranchWhatsApp;
