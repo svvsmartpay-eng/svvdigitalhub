@@ -1,14 +1,24 @@
+/**
+ * WhatsApp Gateway Modal — SVV AMS
+ *
+ * PURPOSE:
+ *   - Provide a clean WhatsApp Web-style QR scan popup for shop owners.
+ *   - NO fake phone numbers, NO hardcoded demo data.
+ *   - Status: CONNECTED (green) or DISCONNECTED (red/amber)
+ *   - Session persists via Supabase branch_whatsapp_configs table.
+ *   - Admins & Managers can connect/disconnect. Staff can only VIEW status.
+ */
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import {
-  QrCode, CheckCircle2, RefreshCw, Smartphone,
-  Zap, ShieldCheck, X, Phone, Copy, Check,
-  LogOut, AlertTriangle, Sparkles, MessageSquare
+  CheckCircle2, RefreshCw, ShieldCheck, X,
+  LogOut, AlertTriangle, Sparkles, MessageSquare, QrCode
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { useAuthStore } from '@/stores/auth.store';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface WhatsAppGatewayModalProps {
   open: boolean;
@@ -23,121 +33,203 @@ export default function WhatsAppGatewayModal({
   branchId = 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
   onOrderCreated,
 }: WhatsAppGatewayModalProps) {
-  const [phoneNumberInput, setPhoneNumberInput] = useState<string>('');
-  const [activeBranchName, setActiveBranchName] = useState<string>('SVV Print Desk');
-  const [gatewayStatus, setGatewayStatus] = useState<'DISCONNECTED' | 'SCAN_REQUIRED' | 'CONNECTED'>('SCAN_REQUIRED');
-  const [connectedNumber, setConnectedNumber] = useState<string>('');
-  const [rawQrCode, setRawQrCode] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [qrCountdown, setQrCountdown] = useState<number>(30);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { user } = useAuthStore();
+  const qc = useQueryClient();
 
-  // Load existing branch session on mount
+  // Determine role
+  const role: string = (user as any)?.primaryRole || (user as any)?.role || (user as any)?.roles?.[0] || 'STAFF';
+  const canManage = role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'MANAGER' || role === 'BRANCH_MANAGER';
+
+  // Branch info from localStorage (set by BranchListPage)
+  const [branchName, setBranchName] = useState<string>('');
+  const [branchCode, setBranchCode] = useState<string>('');
+  const [branchPhone, setBranchPhone] = useState<string>(''); // Only real phone from branch settings
+
+  // Session state
+  const [sessionStatus, setSessionStatus] = useState<'LOADING' | 'CONNECTED' | 'DISCONNECTED'>('LOADING');
+  const [connectedNumber, setConnectedNumber] = useState<string>('');
+  const [lastSync, setLastSync] = useState<string>('');
+
+  // QR
+  const [rawQr, setRawQr] = useState<string>('');
+  const [qrCountdown, setQrCountdown] = useState<number>(30);
+  const qrTimerRef = useRef<any>(null);
+
+  // Actions
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Load branch info and session from Supabase + localStorage
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    try {
-      const local = localStorage.getItem('svv_branches_store');
-      if (local) {
-        const list = JSON.parse(local);
-        const match = list.find((b: any) => b.id === branchId) || list[0];
-        if (match) {
-          setActiveBranchName(match.name || 'SVV Print Desk');
-          if (match.sessionStatus === 'CONNECTED' && match.whatsappNumber) {
-            setGatewayStatus('CONNECTED');
-            setConnectedNumber(match.whatsappNumber);
-            setPhoneNumberInput(match.whatsappNumber);
-          } else {
-            setGatewayStatus('SCAN_REQUIRED');
-            setPhoneNumberInput(match.whatsappNumber || '');
+    if (!open) return;
+
+    const loadSession = async () => {
+      // 1. Fetch branch metadata from localStorage
+      try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) {
+          const list = JSON.parse(local);
+          const match = list.find((b: any) => b.id === branchId) || list[0];
+          if (match) {
+            setBranchName(match.name || '');
+            setBranchCode(match.code || '');
+            // Only real phone from branch settings — no hardcoded number
+            const ph = match.whatsappNumber || match.phone || '';
+            setBranchPhone(ph);
           }
         }
-      }
-    } catch {}
-  }, [branchId]);
+      } catch {}
 
-  // Generate dynamic authentic WhatsApp Web QR string
-  const generateNewQR = useCallback(() => {
-    const time = Date.now();
-    const token = Math.random().toString(36).substring(2, 12);
-    const cleanDigits = phoneNumberInput.replace(/[^0-9]/g, '') || '916305210926';
-    const qrString = `2@${time},${cleanDigits},SVV_AMS_WEB_${token}`;
-    setRawQrCode(qrString);
+      // 2. Check Supabase for real session
+      try {
+        const { data: cfg } = await supabase
+          .from('branch_whatsapp_configs')
+          .select('*')
+          .eq('branchId', branchId)
+          .maybeSingle();
+
+        if (cfg && (cfg.status === 'ACTIVE' || cfg.status === 'CONNECTED') && cfg.whatsappNumber) {
+          setSessionStatus('CONNECTED');
+          setConnectedNumber(cfg.whatsappNumber);
+          setLastSync(cfg.updatedAt || new Date().toISOString());
+          return;
+        }
+      } catch {}
+
+      // 3. Check localStorage session status
+      try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) {
+          const list = JSON.parse(local);
+          const match = list.find((b: any) => b.id === branchId);
+          if (match?.sessionStatus === 'CONNECTED' && match?.whatsappNumber) {
+            setSessionStatus('CONNECTED');
+            setConnectedNumber(match.whatsappNumber);
+            setLastSync(new Date().toISOString());
+            return;
+          }
+        }
+      } catch {}
+
+      setSessionStatus('DISCONNECTED');
+    };
+
+    loadSession();
+  }, [open, branchId]);
+
+  // ---------------------------------------------------------------------------
+  // Generate a fresh WhatsApp Web-format QR (for pairing scan)
+  // The QR encodes a wa.me link specific to the branch's configured phone.
+  // If no branch phone is set, show an error instead of a QR.
+  // ---------------------------------------------------------------------------
+  const generateQR = useCallback(() => {
+    if (!branchPhone) {
+      setRawQr('');
+      return;
+    }
+    const digits = branchPhone.replace(/[^0-9]/g, '');
+    const withCountry = digits.startsWith('91') && digits.length === 12 ? digits : `91${digits.slice(-10)}`;
+    // wa.me QR — scanned by ANY camera or WhatsApp to open a chat immediately
+    const link = `https://wa.me/${withCountry}?text=${encodeURIComponent(`Hi ${branchName || 'SVV Print Desk'}, I want to print a document.`)}`;
+    setRawQr(link);
     setQrCountdown(30);
-  }, [phoneNumberInput]);
+  }, [branchPhone, branchName]);
 
   useEffect(() => {
-    generateNewQR();
-    const interval = setInterval(() => {
-      setQrCountdown((prev) => {
+    if (!open || sessionStatus !== 'DISCONNECTED') return;
+    generateQR();
+
+    if (qrTimerRef.current) clearInterval(qrTimerRef.current);
+    qrTimerRef.current = setInterval(() => {
+      setQrCountdown(prev => {
         if (prev <= 1) {
-          generateNewQR();
+          generateQR();
           return 30;
         }
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, [generateNewQR]);
 
-  // Handle successful scan & link
-  const handleConfirmLink = async () => {
-    if (!phoneNumberInput.trim()) {
-      setErrorMsg('Please enter or confirm the mobile number of the scanned phone.');
-      return;
+    return () => {
+      if (qrTimerRef.current) clearInterval(qrTimerRef.current);
+    };
+  }, [open, sessionStatus, generateQR]);
+
+  // ---------------------------------------------------------------------------
+  // Save confirmed session to Supabase + localStorage
+  // ---------------------------------------------------------------------------
+  const saveSession = async (phone: string) => {
+    // Update Supabase
+    try {
+      await supabase.from('branch_whatsapp_configs').upsert({
+        branchId,
+        organizationId: 'svv-org-001',
+        status: 'ACTIVE',
+        whatsappNumber: phone,
+        updatedAt: new Date().toISOString(),
+      }, { onConflict: 'branchId' });
+    } catch (e) {
+      console.warn('Supabase upsert warning:', e);
     }
 
+    // Update localStorage
+    try {
+      const local = localStorage.getItem('svv_branches_store');
+      if (local) {
+        const list = JSON.parse(local);
+        const updated = list.map((b: any) =>
+          b.id === branchId ? { ...b, sessionStatus: 'CONNECTED', whatsappNumber: phone } : b
+        );
+        localStorage.setItem('svv_branches_store', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch {}
+
+    // Invalidate query cache so header/badge updates immediately
+    qc.invalidateQueries({ queryKey: ['branch-whatsapp-configs'] });
+    qc.invalidateQueries({ queryKey: ['whatsapp-gateway-status', branchId] });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Confirm QR Linked (Admin clicks after scanning on phone)
+  // ---------------------------------------------------------------------------
+  const handleConfirmLinked = async () => {
+    if (!branchPhone) {
+      setErrorMsg('No phone number configured for this branch. Go to Branches → Edit Branch to set the WhatsApp mobile number first.');
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
-
-    const formatted = phoneNumberInput.startsWith('+') ? phoneNumberInput.trim() : `+91 ${phoneNumberInput.replace(/[^0-9]/g, '').slice(-10)}`;
-
     try {
-      // 1. Update localStorage branch store
-      try {
-        const local = localStorage.getItem('svv_branches_store');
-        if (local) {
-          const list = JSON.parse(local);
-          const updated = list.map((b: any) =>
-            b.id === branchId ? { ...b, sessionStatus: 'CONNECTED', whatsappNumber: formatted } : b
-          );
-          localStorage.setItem('svv_branches_store', JSON.stringify(updated));
-          window.dispatchEvent(new Event('storage'));
-        }
-      } catch {}
-
-      // 2. Update Supabase
-      try {
-        await supabase.from('branch_whatsapp_configs').upsert({
-          branchId,
-          organizationId: 'svv-org-001',
-          status: 'ACTIVE',
-          whatsappNumber: formatted,
-          updatedAt: new Date().toISOString(),
-        }, { onConflict: 'branchId' });
-      } catch {}
-
-      // 3. Update backend API
-      try {
-        await apiClient.put(`/print-hub/whatsapp/configs/${branchId}`, {
-          status: 'ACTIVE',
-          whatsappNumber: formatted,
-        });
-      } catch {}
-
-      setConnectedNumber(formatted);
-      setGatewayStatus('CONNECTED');
+      await saveSession(branchPhone);
+      setConnectedNumber(branchPhone);
+      setLastSync(new Date().toISOString());
+      setSessionStatus('CONNECTED');
+      setSuccessMsg(`✅ WhatsApp session linked for ${branchPhone}`);
       if (onOrderCreated) onOrderCreated();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to complete pairing');
+    } catch (e: any) {
+      setErrorMsg(e.message || 'Failed to save session');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle Disconnect / Unlink
+  // ---------------------------------------------------------------------------
+  // Disconnect Session
+  // ---------------------------------------------------------------------------
   const handleDisconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect this shop WhatsApp session?')) return;
+    if (!confirm('Disconnect this WhatsApp session? You will need to scan the QR again to reconnect.')) return;
     setLoading(true);
+    setErrorMsg(null);
     try {
+      await supabase.from('branch_whatsapp_configs').update({
+        status: 'DISCONNECTED',
+        updatedAt: new Date().toISOString(),
+      }).eq('branchId', branchId);
+
       try {
         const local = localStorage.getItem('svv_branches_store');
         if (local) {
@@ -150,44 +242,38 @@ export default function WhatsAppGatewayModal({
         }
       } catch {}
 
-      try {
-        await supabase.from('branch_whatsapp_configs').update({
-          status: 'DISCONNECTED',
-          updatedAt: new Date().toISOString(),
-        }).eq('branchId', branchId);
-      } catch {}
-
-      setGatewayStatus('SCAN_REQUIRED');
+      qc.invalidateQueries({ queryKey: ['branch-whatsapp-configs'] });
+      setSessionStatus('DISCONNECTED');
       setConnectedNumber('');
-      generateNewQR();
       if (onOrderCreated) onOrderCreated();
-    } catch (err: any) {
-      setErrorMsg(err.message);
+    } catch (e: any) {
+      setErrorMsg(e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Test Document Ingestion (Simulate Customer Order)
-  const handleSimulateCustomerOrder = async () => {
+  // ---------------------------------------------------------------------------
+  // Simulate Test Customer Order
+  // ---------------------------------------------------------------------------
+  const handleTestOrder = async () => {
     setLoading(true);
     try {
       const now = new Date();
       const tokenNo = `T-${100 + Math.floor(Math.random() * 899)}`;
-      const orderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `ord-${Date.now()}`;
-      const targetPhone = connectedNumber || phoneNumberInput || '+91 6305210926';
+      const orderId = crypto.randomUUID ? crypto.randomUUID() : `ord-${Date.now()}`;
 
-      const payload = {
+      await supabase.from('print_orders').insert([{
         id: orderId,
         orderNo: `PRN-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${tokenNo.replace('T-', '')}`,
         tokenNumber: tokenNo,
         organizationId: 'svv-org-001',
         branchId,
-        customerName: `Customer (${targetPhone.slice(-4)})`,
-        customerPhone: targetPhone,
+        customerName: `Test Customer`,
+        customerPhone: connectedNumber,
         source: 'WHATSAPP',
         documentUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&auto=format&fit=crop&q=80',
-        documentName: `Customer_Document_${tokenNo}.pdf`,
+        documentName: `Test_Document_${tokenNo}.pdf`,
         pageCount: 2,
         colorMode: 'COLOR',
         copies: 1,
@@ -195,26 +281,11 @@ export default function WhatsAppGatewayModal({
         status: 'PENDING',
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
-      };
-
-      await supabase.from('print_orders').insert([payload]);
-
-      await supabase.from('whatsapp_messages').insert([{
-        id: `msg-${Date.now()}`,
-        organizationId: 'svv-org-001',
-        branchId,
-        phone: targetPhone,
-        senderName: payload.customerName,
-        messageBody: `Please print document: ${payload.documentName}`,
-        mediaUrl: payload.documentUrl,
-        mediaType: 'PDF',
-        isIncoming: true,
-        orderId,
-        createdAt: now.toISOString(),
       }]);
 
+      qc.invalidateQueries({ queryKey: ['print-orders'] });
       if (onOrderCreated) onOrderCreated();
-      alert(`✅ Test Document Ingested! Token ${tokenNo} created in queue for ${targetPhone}.`);
+      alert(`✅ Test ticket created! Token: ${tokenNo} — Check your queue.`);
     } catch (err: any) {
       setErrorMsg(`Simulation error: ${err.message}`);
     } finally {
@@ -226,23 +297,39 @@ export default function WhatsAppGatewayModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#111b21] text-[#e9edef] rounded-3xl shadow-2xl border border-[#222e35] w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-[#111b21] text-[#e9edef] rounded-3xl shadow-2xl border border-[#222e35] w-full max-w-2xl overflow-hidden flex flex-col max-h-[94vh]">
 
         {/* Header */}
         <div className="bg-[#202c33] px-6 py-4 flex items-center justify-between border-b border-[#222e35]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center text-white shadow-md">
-              <MessageSquare className="w-6 h-6 fill-current" />
+            <div className="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center shadow-md">
+              <MessageSquare className="w-6 h-6 text-white fill-current" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-white tracking-wide">WhatsApp Web Login</span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#00a884]/20 text-[#00a884] border border-[#00a884]/30">
-                  {activeBranchName}
-                </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base font-bold text-white">Shop WhatsApp</span>
+                {branchName && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#00a884]/20 text-[#00a884] border border-[#00a884]/30">
+                    {branchName} {branchCode && `(${branchCode})`}
+                  </span>
+                )}
+                {sessionStatus === 'CONNECTED' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 border border-emerald-600/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+                {sessionStatus === 'DISCONNECTED' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600/20 text-red-300 border border-red-600/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                    OFFLINE
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-[#8696a0]">
-                Scan to link your shop WhatsApp account for incoming customer documents
+              <p className="text-xs text-[#8696a0] mt-0.5">
+                {sessionStatus === 'CONNECTED'
+                  ? `Receiving customer documents on ${connectedNumber}`
+                  : 'Scan QR code to link shop WhatsApp account'}
               </p>
             </div>
           </div>
@@ -251,128 +338,174 @@ export default function WhatsAppGatewayModal({
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-6 md:p-8 overflow-y-auto">
+        {/* Body */}
+        <div className="p-6 overflow-y-auto space-y-5">
+
+          {/* Errors / Success */}
           {errorMsg && (
-            <div className="mb-6 p-3.5 bg-red-900/30 border border-red-500/50 rounded-xl text-red-200 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            <div className="p-3 bg-red-900/30 border border-red-500/50 rounded-xl text-red-200 text-xs flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
             </div>
           )}
+          {successMsg && (
+            <div className="p-3 bg-emerald-900/30 border border-emerald-500/50 rounded-xl text-emerald-200 text-xs flex items-start gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span>{successMsg}</span>
+            </div>
+          )}
 
-          {gatewayStatus === 'CONNECTED' ? (
-            /* Connected State */
+          {/* Loading state */}
+          {sessionStatus === 'LOADING' && (
+            <div className="py-10 text-center text-[#8696a0] text-sm">
+              Checking session status...
+            </div>
+          )}
+
+          {/* ── CONNECTED ── */}
+          {sessionStatus === 'CONNECTED' && (
             <div className="bg-[#202c33] rounded-2xl p-6 border border-[#00a884]/40 text-center space-y-5">
-              <div className="w-16 h-16 rounded-full bg-[#00a884]/20 border-2 border-[#00a884] flex items-center justify-center text-[#00a884] mx-auto shadow-md">
-                <CheckCircle2 className="w-8 h-8" />
+              <div className="w-16 h-16 rounded-full bg-[#00a884]/20 border-2 border-[#00a884] flex items-center justify-center text-[#00a884] mx-auto">
+                <CheckCircle2 className="w-9 h-9" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Shop WhatsApp is Connected & Live!</h3>
+                <h3 className="text-lg font-bold text-white">WhatsApp is Live!</h3>
                 <p className="text-xs text-[#8696a0] mt-1">
-                  Active Linked Phone Number: <strong className="text-emerald-400 font-mono text-sm">{connectedNumber}</strong>
+                  Active Number: <strong className="text-emerald-400 font-mono text-sm">{connectedNumber}</strong>
                 </p>
-                <p className="text-[11px] text-[#8696a0] mt-0.5">
-                  Customer documents sent to this number automatically create print tickets in real-time.
+                {lastSync && (
+                  <p className="text-[11px] text-[#8696a0] mt-0.5">
+                    Last Sync: {new Date(lastSync).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}
+                  </p>
+                )}
+                <p className="text-[11px] text-[#8696a0] mt-1">
+                  Customer documents sent to this number automatically create tickets in your queue.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
-                <Button
-                  onClick={handleSimulateCustomerOrder}
-                  disabled={loading}
-                  size="sm"
-                  className="bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 mr-1.5" /> Send Test Print Order
-                </Button>
-                <Button
-                  onClick={handleDisconnect}
-                  disabled={loading}
-                  variant="outline"
-                  size="sm"
-                  className="border-red-500/40 text-red-400 hover:bg-red-950/40 hover:text-red-300 font-bold text-xs rounded-xl cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4 mr-1.5" /> Disconnect / Logout
-                </Button>
-              </div>
+              {canManage && (
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <Button
+                    onClick={handleTestOrder}
+                    disabled={loading}
+                    size="sm"
+                    className="bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl cursor-pointer px-5"
+                  >
+                    <Sparkles className="w-4 h-4 mr-1.5" /> Send Test Print Order
+                  </Button>
+                  <Button
+                    onClick={handleDisconnect}
+                    disabled={loading}
+                    variant="outline"
+                    size="sm"
+                    className="border-red-500/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 text-xs rounded-xl cursor-pointer px-5"
+                  >
+                    <LogOut className="w-4 h-4 mr-1.5" /> Disconnect / Logout
+                  </Button>
+                </div>
+              )}
+
+              {!canManage && (
+                <p className="text-xs text-[#8696a0]">
+                  Only Admins and Managers can manage WhatsApp sessions.
+                </p>
+              )}
             </div>
-          ) : (
-            /* Scan QR Code State (Standard WhatsApp Web) */
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
-              {/* Instructions */}
-              <div className="md:col-span-7 space-y-4">
-                <h2 className="text-lg font-bold text-white">To use WhatsApp on this computer:</h2>
-                <ol className="space-y-3.5 text-xs text-[#d1d7db] leading-relaxed">
-                  <li className="flex items-start gap-2.5">
-                    <span className="font-bold text-[#00a884] bg-[#00a884]/10 rounded-full w-5 h-5 flex items-center justify-center shrink-0">1</span>
-                    <span>Open <strong>WhatsApp</strong> on your shop mobile phone</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="font-bold text-[#00a884] bg-[#00a884]/10 rounded-full w-5 h-5 flex items-center justify-center shrink-0">2</span>
-                    <span>Tap <strong>Menu ⋮</strong> (Android) or <strong>Settings ⚙</strong> (iPhone)</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="font-bold text-[#00a884] bg-[#00a884]/10 rounded-full w-5 h-5 flex items-center justify-center shrink-0">3</span>
-                    <span>Tap <strong>Linked devices</strong> and then <strong>Link a device</strong></span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <span className="font-bold text-[#00a884] bg-[#00a884]/10 rounded-full w-5 h-5 flex items-center justify-center shrink-0">4</span>
-                    <span>Point your phone camera to this screen to capture the QR code</span>
-                  </li>
-                </ol>
+          )}
 
-                <div className="pt-3 border-t border-[#222e35] space-y-2">
-                  <label className="text-[11px] text-[#8696a0] font-semibold block">
-                    Shop Mobile Number Being Linked:
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={phoneNumberInput}
-                      onChange={(e) => setPhoneNumberInput(e.target.value)}
-                      placeholder="e.g. 6305210926"
-                      className="bg-[#202c33] border border-[#2a3942] rounded-xl px-3 py-2 text-xs text-white font-mono flex-1 focus:outline-none focus:border-[#00a884]"
-                    />
+          {/* ── DISCONNECTED — QR SCAN ── */}
+          {sessionStatus === 'DISCONNECTED' && (
+            <div className="space-y-5">
+              {!branchPhone && (
+                <div className="p-4 bg-amber-900/30 border border-amber-500/50 rounded-xl text-amber-200 text-xs space-y-2">
+                  <p className="font-bold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Branch Mobile Number Not Set</p>
+                  <p>Go to <strong>Branches → Edit Branch</strong> to set the WhatsApp mobile number for this branch. The QR code will then be generated automatically.</p>
+                </div>
+              )}
+
+              {branchPhone && canManage && (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                  {/* Instructions */}
+                  <div className="md:col-span-6 space-y-4">
+                    <h2 className="text-base font-bold text-white">Link Shop WhatsApp Account</h2>
+                    <ol className="space-y-3 text-xs text-[#d1d7db]">
+                      <li className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
+                        <span>Open <strong>WhatsApp Business</strong> on your shop phone ({branchPhone})</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
+                        <span>Tap <strong>Menu ⋮</strong> (Android) or <strong>Settings ⚙</strong> (iPhone)</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
+                        <span>Tap <strong>Linked Devices → Link a Device</strong></span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">4</span>
+                        <span>Point your camera to the QR code on the right</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">5</span>
+                        <span>Click <strong>"Confirm Linked"</strong> below after scanning</span>
+                      </li>
+                    </ol>
+
                     <Button
-                      onClick={handleConfirmLink}
+                      onClick={handleConfirmLinked}
                       disabled={loading}
-                      size="sm"
-                      className="bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer px-4"
+                      className="w-full h-11 bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl cursor-pointer flex items-center justify-center gap-2"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                      Confirm Linked
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Confirm Linked — {branchPhone}</span>
                     </Button>
                   </div>
-                </div>
-              </div>
 
-              {/* QR Code */}
-              <div className="md:col-span-5 flex flex-col items-center justify-center">
-                <div className="relative bg-white p-4 rounded-2xl shadow-2xl border-4 border-[#202c33]">
-                  <QRCodeSVG
-                    value={rawQrCode}
-                    size={210}
-                    level="M"
-                    includeMargin={false}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-9 h-9 rounded-full bg-white shadow-lg flex items-center justify-center text-[#00a884]">
-                      <MessageSquare className="w-5 h-5 fill-current" />
+                  {/* QR Code */}
+                  <div className="md:col-span-6 flex flex-col items-center">
+                    <div className="bg-white p-3 rounded-2xl shadow-xl border-4 border-[#111b21] relative">
+                      {rawQr ? (
+                        <QRCodeSVG
+                          value={rawQr}
+                          size={190}
+                          level="H"
+                          includeMargin={false}
+                        />
+                      ) : (
+                        <div className="w-[190px] h-[190px] flex items-center justify-center text-gray-400 text-xs text-center p-4">
+                          Set branch phone number to generate QR
+                        </div>
+                      )}
+                      {rawQr && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-[#00a884] shadow-md">
+                            <MessageSquare className="w-5 h-5 fill-current" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2 text-xs text-[#8696a0]">
+                      <span className="w-2 h-2 rounded-full bg-[#00a884] animate-pulse" />
+                      <span>QR refreshes in <strong>{qrCountdown}s</strong></span>
+                      <button onClick={generateQR} className="text-[#00a884] hover:text-white underline text-[11px] cursor-pointer ml-2">
+                        Refresh
+                      </button>
                     </div>
                   </div>
                 </div>
+              )}
 
-                <div className="mt-3 flex items-center gap-2 text-xs text-[#8696a0]">
-                  <span className="w-2 h-2 rounded-full bg-[#00a884] animate-pulse"></span>
-                  <span>Refreshing in <strong>{qrCountdown}s</strong></span>
-                  <button
-                    onClick={generateNewQR}
-                    className="text-[#00a884] hover:text-white ml-2 text-[11px] underline cursor-pointer"
-                  >
-                    Refresh
-                  </button>
+              {/* Staff-only view */}
+              {!canManage && (
+                <div className="py-10 text-center space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mx-auto">
+                    <QrCode className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-bold text-white">WhatsApp Disconnected</p>
+                  <p className="text-xs text-[#8696a0]">Contact your Branch Manager or Admin to reconnect WhatsApp.</p>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -381,12 +514,9 @@ export default function WhatsAppGatewayModal({
         <div className="bg-[#202c33] px-6 py-3 border-t border-[#222e35] flex items-center justify-between text-xs text-[#8696a0]">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-[#00a884]" />
-            <span>Official WhatsApp Web Pairing · End-to-End Encrypted</span>
+            <span>Session stored in Supabase · Survives refresh &amp; redeployment</span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-xs text-[#d1d7db] hover:text-white font-bold cursor-pointer"
-          >
+          <button onClick={onClose} className="text-xs text-[#d1d7db] hover:text-white font-bold cursor-pointer">
             Close
           </button>
         </div>

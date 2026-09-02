@@ -398,33 +398,7 @@ export function useBranchWhatsAppConfigs() {
   return useQuery({
     queryKey: ['branch-whatsapp-configs'],
     queryFn: async () => {
-      try {
-        const local = localStorage.getItem('svv_branches_store');
-        if (local) {
-          const parsed = JSON.parse(local);
-          if (parsed && parsed.length > 0) {
-            return parsed.map((b: any) => ({
-              id: `cfg-${b.id}`,
-              branchId: b.id,
-              branchName: b.name || (b.code === 'SVV-1' ? 'SVV Main Hub' : 'SVV Digital Desk'),
-              branchCode: b.code || 'SVV',
-              branchCity: b.city || 'Telangana',
-              whatsappNumber: b.whatsappNumber || b.phone || '+91 77386 63866',
-              phoneNumber: b.whatsappNumber || b.phone || '+91 77386 63866',
-              displayName: `${b.name} Print Desk`,
-              status: b.sessionStatus === 'CONNECTED' ? 'CONNECTED' : (b.sessionStatus === 'ACTIVE' ? 'ACTIVE' : 'OFFLINE'),
-              isEnabled: true,
-              welcomeMessage: `Welcome to ${b.name} Print Desk! Send your PDF or image documents here for instant printing.`,
-            }));
-          }
-        }
-      } catch {}
-
-      try {
-        const res = await apiClient.get('/print-hub/whatsapp/configs');
-        if (res.data?.data && res.data.data.length > 0) return res.data.data;
-      } catch {}
-
+      // 1. Try Supabase first (authoritative source)
       try {
         const { data: supaBranches } = await supabase.from('branches').select('*');
         const { data: supaConfigs } = await supabase.from('branch_whatsapp_configs').select('*');
@@ -434,21 +408,20 @@ export function useBranchWhatsAppConfigs() {
         if (activeBranches.length > 0) {
           return activeBranches.map((b: any) => {
             const cfg = (supaConfigs || []).find((c: any) => c.branchId === b.id);
-            const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || (b.code === 'SVV-1' ? '+91 77386 63866' : '+91 99515 27090');
-            const city = b.city || (b.code === 'SVV-1' ? 'Isnapur' : 'Patancheru');
-            const isConn = cfg?.status === 'CONNECTED' || cfg?.status === 'ACTIVE';
-
+            // Only use real stored numbers — never fallback to demo numbers
+            const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || null;
+            const isConn = (cfg?.status === 'CONNECTED' || cfg?.status === 'ACTIVE') && !!waNum;
             return {
               id: cfg?.id || `cfg-${b.id}`,
               branchId: b.id,
-              branchName: b.name || (b.code === 'SVV-1' ? 'SVV Main Hub' : 'SVV Digital Desk'),
-              branchCode: b.code || (b.name?.includes('1') ? 'SVV-1' : 'SVV-2'),
-              branchCity: city,
+              branchName: b.name,
+              branchCode: b.code,
+              branchCity: b.city,
               whatsappNumber: waNum,
               phoneNumber: waNum,
               displayName: cfg?.displayName || `${b.name} Print Desk`,
               status: isConn ? 'CONNECTED' : 'OFFLINE',
-              isEnabled: true,
+              isEnabled: isConn,
               welcomeMessage: cfg?.welcomeMessage || `Welcome to ${b.name} Print Desk! Send your PDF or image documents here for instant printing.`,
             };
           });
@@ -457,38 +430,46 @@ export function useBranchWhatsAppConfigs() {
         console.warn('Supabase fetch branch configs error:', e);
       }
 
-      return [
-        {
-          id: 'cfg-1',
-          branchId: 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
-          branchName: 'SVV Main Hub',
-          branchCode: 'SVV-1',
-          branchCity: 'Isnapur',
-          whatsappNumber: '+91 77386 63866',
-          phoneNumber: '+91 77386 63866',
-          displayName: 'SVV Main Hub Print Desk',
-          status: 'ACTIVE',
-          isEnabled: true,
-          welcomeMessage: 'Welcome to SVV Main Hub Print Desk! Send your PDF or image documents here for instant printing.',
-        },
-        {
-          id: 'cfg-2',
-          branchId: 'branch-2',
-          branchName: 'SVV Digital Desk',
-          branchCode: 'SVV-2',
-          branchCity: 'Patancheru',
-          whatsappNumber: '+91 99515 27090',
-          phoneNumber: '+91 99515 27090',
-          displayName: 'SVV Digital Desk',
-          status: 'ACTIVE',
-          isEnabled: true,
-          welcomeMessage: 'Welcome to SVV Digital Desk! Send your PDF or image documents here for instant printing.',
+      // 2. Fallback to localStorage (no fake numbers — only real saved numbers)
+      try {
+        const local = localStorage.getItem('svv_branches_store');
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (parsed && parsed.length > 0) {
+            return parsed.map((b: any) => {
+              const waNum = b.whatsappNumber || b.phone || null;
+              const isConn = b.sessionStatus === 'CONNECTED' && !!waNum;
+              return {
+                id: `cfg-${b.id}`,
+                branchId: b.id,
+                branchName: b.name,
+                branchCode: b.code,
+                branchCity: b.city,
+                whatsappNumber: waNum,
+                phoneNumber: waNum,
+                displayName: `${b.name} Print Desk`,
+                status: isConn ? 'CONNECTED' : 'OFFLINE',
+                isEnabled: isConn,
+                welcomeMessage: `Welcome to ${b.name} Print Desk! Send your PDF or image documents here for instant printing.`,
+              };
+            });
+          }
         }
-      ];
+      } catch {}
+
+      // 3. Last resort: try backend API
+      try {
+        const res = await apiClient.get('/print-hub/whatsapp/configs');
+        if (res.data?.data && res.data.data.length > 0) return res.data.data;
+      } catch {}
+
+      return [];
     },
     staleTime: 3000,
+    refetchInterval: 10000,
   });
 }
+
 
 export function useUpsertBranchWhatsAppConfig() {
   const qc = useQueryClient();
@@ -499,7 +480,7 @@ export function useUpsertBranchWhatsAppConfig() {
       } catch {}
 
       try {
-        const waNum = data.whatsappNumber || data.phoneNumber || '+91 77386 63866';
+        const waNum = data.whatsappNumber || data.phoneNumber;
         await supabase
           .from('branch_whatsapp_configs')
           .upsert({
@@ -580,10 +561,9 @@ export function useWhatsAppGatewayStatus(branchId?: string, enabled = true) {
       } catch {}
 
       return {
-        status: 'CONNECTED',
-        connectedPhone: '+91 77386 63866',
+        status: 'DISCONNECTED',
+        connectedPhone: null,
         branchId,
-        lastConnectedAt: new Date().toISOString(),
       };
     },
     enabled: Boolean(branchId) && enabled,
