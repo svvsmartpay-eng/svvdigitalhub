@@ -140,7 +140,7 @@ export default async function handler(req, res) {
           tokenNumber,
           organizationId: 'svv-org-001',
           branchId,
-          customerName,
+          customerName: senderName,
           customerPhone: phone,
           source: 'WHATSAPP',
           documentUrl: mediaUrl,

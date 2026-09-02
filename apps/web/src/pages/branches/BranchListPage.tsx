@@ -97,8 +97,9 @@ export default function BranchListPage() {
 
           return {
             ...b,
-            whatsappNumber: wa?.whatsappNumber || b.phone || '+91 77386 63866',
-            status: wa?.status === 'ACTIVE' || wa?.status === 'CONNECTED' ? 'ACTIVE' : 'READY',
+            whatsappNumber: wa?.whatsappNumber || b.whatsappNumber || b.phone || null,
+            sessionStatus: (wa?.status === 'CONNECTED' && !!(wa?.whatsappNumber || b.whatsappNumber)) ? 'CONNECTED' : 'OFFLINE',
+            status: 'ACTIVE',
             staffCount: uCount || (b.code === 'SVV-1' ? 4 : 3),
             assetsCount: aCount || (b.code === 'SVV-1' ? 32 : 27),
             ordersCount: oCount || (b.code === 'SVV-1' ? 14 : 4),
@@ -119,9 +120,10 @@ export default function BranchListPage() {
             city: 'Isnapur',
             state: 'Telangana',
             address: 'Main Road, Isnapur Chowrasta',
-            phone: '+91 77386 63866',
-            whatsappNumber: '+91 77386 63866',
+            phone: '',
+            whatsappNumber: '',
             status: 'ACTIVE',
+            sessionStatus: 'OFFLINE',
             staffCount: 4,
             assetsCount: 32,
             ordersCount: 18,
@@ -133,9 +135,10 @@ export default function BranchListPage() {
             city: 'Patancheru',
             state: 'Telangana',
             address: 'Near Bus Stand, Patancheru',
-            phone: '+91 99515 27090',
-            whatsappNumber: '+91 99515 27090',
+            phone: '',
+            whatsappNumber: '',
             status: 'ACTIVE',
+            sessionStatus: 'OFFLINE',
             staffCount: 3,
             assetsCount: 27,
             ordersCount: 8,
@@ -165,7 +168,7 @@ export default function BranchListPage() {
     setFormCity('Hyderabad');
     setFormState('Telangana');
     setFormPhone('');
-    setFormWhatsApp('+91 77386 63866');
+    setFormWhatsApp('');
     setFormManager('');
     setErrorMsg(null);
     setIsModalOpen(true);
@@ -179,7 +182,7 @@ export default function BranchListPage() {
     setFormCity(b.city || 'Hyderabad');
     setFormState(b.state || 'Telangana');
     setFormPhone(b.phone || '');
-    setFormWhatsApp(b.whatsappNumber || '+91 77386 63866');
+    setFormWhatsApp(b.whatsappNumber || '');
     setFormManager(b.managerName || '');
     setErrorMsg(null);
     setIsModalOpen(true);
@@ -222,14 +225,15 @@ export default function BranchListPage() {
         console.warn('Supabase branch upsert:', e);
       }
 
-      if (formWhatsApp) {
+      if (formWhatsApp.trim()) {
         try {
+          // Only save the phone number — NEVER touch session status here
+          // Session status is controlled exclusively by WhatsApp modal Confirm/Disconnect
           await supabase.from('branch_whatsapp_configs').upsert({
             branchId,
             organizationId: 'svv-org-001',
-            whatsappNumber: formWhatsApp,
+            whatsappNumber: formWhatsApp.trim(),
             displayName: `${formName} (${formCode})`,
-            status: 'ACTIVE',
             updatedAt: now,
           }, { onConflict: 'branchId' });
         } catch {}
@@ -253,8 +257,10 @@ export default function BranchListPage() {
           city: formCity.trim(),
           state: formState.trim(),
           phone: formPhone || formWhatsApp,
-          whatsappNumber: formWhatsApp,
+          whatsappNumber: formWhatsApp.trim() || undefined,
           status: 'ACTIVE',
+          // Preserve existing sessionStatus — do NOT reset to OFFLINE on branch edit
+          sessionStatus: editingBranch?.sessionStatus || 'OFFLINE',
           staffCount: editingBranch?.staffCount || 3,
           assetsCount: editingBranch?.assetsCount || 10,
           ordersCount: editingBranch?.ordersCount || 0,
@@ -356,9 +362,9 @@ export default function BranchListPage() {
             <Smartphone className="w-4 h-4 text-emerald-600" /> WhatsApp Desks
           </div>
           <div className="text-2xl font-black text-emerald-600 mt-1">
-            {branches.filter(b => b.status === 'ACTIVE').length} / {branches.length}
+            {branches.filter(b => b.sessionStatus === 'CONNECTED' && b.whatsappNumber).length} / {branches.length}
           </div>
-          <div className="text-[11px] text-gray-400 mt-0.5">Live print gateways active</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">Live connected sessions</div>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-2xs">
@@ -443,12 +449,12 @@ export default function BranchListPage() {
                   </div>
 
                   <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border flex items-center gap-1 ${
-                    b.status === 'ACTIVE'
+                    b.sessionStatus === 'CONNECTED' && b.whatsappNumber
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-blue-50 text-blue-700 border-blue-200'
+                      : 'bg-red-50 text-red-700 border-red-200'
                   }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${b.status === 'ACTIVE' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></span>
-                    {b.status === 'ACTIVE' ? 'WhatsApp Online' : 'Active Desk'}
+                    <span className={`w-1.5 h-1.5 rounded-full ${b.sessionStatus === 'CONNECTED' && b.whatsappNumber ? 'bg-emerald-500 animate-pulse' : 'bg-red-400'}`} />
+                    {b.sessionStatus === 'CONNECTED' && b.whatsappNumber ? 'WhatsApp Live' : 'WhatsApp Offline'}
                   </span>
                 </div>
 

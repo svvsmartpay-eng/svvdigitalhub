@@ -38,6 +38,7 @@ import CustomerTokensPage from './pages/print-hub/CustomerTokensPage';
 import AdvertisementsPage from './pages/print-hub/AdvertisementsPage';
 import BranchQRCodesPage from './pages/print-hub/BranchQRCodesPage';
 import PrintAnalyticsPage from './pages/print-hub/PrintAnalyticsPage';
+import WhatsAppDiagnosticsPage from './pages/print-hub/WhatsAppDiagnosticsPage';
 import SystemDiagnosticsPage from './pages/admin/SystemDiagnosticsPage';
 import BranchListPage from './pages/branches/BranchListPage';
 
@@ -80,6 +81,7 @@ const router = createBrowserRouter([
           { path: 'ads', element: <AdvertisementsPage /> },
           { path: 'qr', element: <BranchQRCodesPage /> },
           { path: 'analytics', element: <PrintAnalyticsPage /> },
+          { path: 'whatsapp-diagnostics', element: <WhatsAppDiagnosticsPage /> },
         ],
       },
       // Assets

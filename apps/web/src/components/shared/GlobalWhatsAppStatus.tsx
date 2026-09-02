@@ -1,17 +1,18 @@
 /**
  * GlobalWhatsAppStatus — SVV AMS Header Badge
  *
- * Shows real-time WhatsApp connection status for the active branch.
- * - 🟢 LIVE (green) = Supabase sessionStatus CONNECTED AND phone number exists
- * - 🔴 OFFLINE (amber pulsing) = Not linked or disconnected
+ * SINGLE SOURCE OF TRUTH: reads exclusively from useBranchWhatsAppConfigs()
+ * which queries Supabase branch_whatsapp_configs as the authoritative source.
  *
- * Zero hardcoded phone numbers. Only reads from Supabase & localStorage.
+ * 🟢 CONNECTED = status === 'CONNECTED' AND whatsappNumber is non-null
+ * 🔴 OFFLINE   = anything else
+ *
+ * Zero hardcoded phone numbers. Zero localStorage-only reads for status.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useBranchWhatsAppConfigs } from '@/api/printHub.api';
 import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
-import { QrCode } from 'lucide-react';
 import { useFilterStore } from '@/stores/filter.store';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -21,41 +22,21 @@ export default function GlobalWhatsAppStatus() {
   const selectedBranchId = useFilterStore((s) => s.selectedBranches?.[0]);
   const qc = useQueryClient();
 
-  const [liveBranch, setLiveBranch] = useState<any>(null);
+  // Find the active branch config from Supabase-sourced data
+  const activeConfig = selectedBranchId && selectedBranchId !== 'ALL'
+    ? (configs || []).find((c: any) => c.branchId === selectedBranchId) || (configs || [])[0]
+    : (configs || [])[0];
 
-  const syncLiveBranch = () => {
-    try {
-      const local = localStorage.getItem('svv_branches_store');
-      if (local) {
-        const list = JSON.parse(local);
-        const match = (selectedBranchId && selectedBranchId !== 'ALL')
-          ? list.find((b: any) => b.id === selectedBranchId)
-          : list[0];
-        setLiveBranch(match || list[0] || null);
-        return;
-      }
-    } catch {}
-    setLiveBranch((configs || [])[0] || null);
-  };
-
-  useEffect(() => {
-    syncLiveBranch();
-    window.addEventListener('storage', syncLiveBranch);
-    return () => window.removeEventListener('storage', syncLiveBranch);
-  }, [selectedBranchId, configs]);
-
-  const activeConfig = liveBranch || (configs || [])[0] || null;
-
-  // Only show CONNECTED if real session exists — no fake status
-  const phone = activeConfig?.whatsappNumber || activeConfig?.phone || null;
-  const isConnected = activeConfig?.sessionStatus === 'CONNECTED' && !!phone;
-  const branchId = activeConfig?.id || activeConfig?.branchId || 'f5abaacc-d2b6-4591-91fb-314b2188e18c';
+  // CONNECTED = real status from Supabase AND real phone number exists
+  const isConnected = activeConfig?.status === 'CONNECTED' && !!activeConfig?.whatsappNumber;
+  const phone: string = activeConfig?.whatsappNumber || '';
+  const branchId: string = activeConfig?.branchId || 'f5abaacc-d2b6-4591-91fb-314b2188e18c';
 
   const handleClose = () => {
     setShowModal(false);
-    syncLiveBranch();
     refetch();
     qc.invalidateQueries({ queryKey: ['branch-whatsapp-configs'] });
+    qc.invalidateQueries({ queryKey: ['whatsapp-gateway-status', branchId] });
   };
 
   return (
@@ -65,7 +46,7 @@ export default function GlobalWhatsAppStatus() {
           <button
             onClick={() => setShowModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-            title={`WhatsApp LIVE on ${phone}. Click to manage session.`}
+            title={`WhatsApp LIVE on ${phone}. Click to manage.`}
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
             <span className="font-mono text-[11px] hidden sm:inline">{phone}</span>

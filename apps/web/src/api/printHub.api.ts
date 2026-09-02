@@ -410,7 +410,7 @@ export function useBranchWhatsAppConfigs() {
             const cfg = (supaConfigs || []).find((c: any) => c.branchId === b.id);
             // Only use real stored numbers — never fallback to demo numbers
             const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || null;
-            const isConn = (cfg?.status === 'CONNECTED' || cfg?.status === 'ACTIVE') && !!waNum;
+            const isConn = cfg?.status === 'CONNECTED' && !!waNum;
             return {
               id: cfg?.id || `cfg-${b.id}`,
               branchId: b.id,
@@ -567,7 +567,6 @@ export function useWhatsAppGatewayStatus(branchId?: string, enabled = true) {
       };
     },
     enabled: Boolean(branchId) && enabled,
-    refetchInterval: 3000,
   });
 }
 

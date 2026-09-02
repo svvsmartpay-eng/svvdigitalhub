@@ -52,7 +52,7 @@ export default function WhatsAppGatewayModal({
 
   // QR
   const [rawQr, setRawQr] = useState<string>('');
-  const [qrCountdown, setQrCountdown] = useState<number>(30);
+  const [qrCountdown, setQrCountdown] = useState<number>(20);
   const qrTimerRef = useRef<any>(null);
 
   // Actions
@@ -135,7 +135,7 @@ export default function WhatsAppGatewayModal({
     // wa.me QR — scanned by ANY camera or WhatsApp to open a chat immediately
     const link = `https://wa.me/${withCountry}?text=${encodeURIComponent(`Hi ${branchName || 'SVV Print Desk'}, I want to print a document.`)}`;
     setRawQr(link);
-    setQrCountdown(30);
+    setQrCountdown(20);
   }, [branchPhone, branchName]);
 
   useEffect(() => {
@@ -147,7 +147,7 @@ export default function WhatsAppGatewayModal({
       setQrCountdown(prev => {
         if (prev <= 1) {
           generateQR();
-          return 30;
+          return 20;
         }
         return prev - 1;
       });
@@ -167,8 +167,9 @@ export default function WhatsAppGatewayModal({
       await supabase.from('branch_whatsapp_configs').upsert({
         branchId,
         organizationId: 'svv-org-001',
-        status: 'ACTIVE',
+        status: 'CONNECTED',
         whatsappNumber: phone,
+        connectedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }, { onConflict: 'branchId' });
     } catch (e) {
