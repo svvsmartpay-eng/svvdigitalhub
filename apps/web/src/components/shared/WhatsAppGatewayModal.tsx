@@ -184,6 +184,26 @@ export default function WhatsAppGatewayModal({
               <p className="text-xs text-[#8696a0]">Only Admin or Managers can link WhatsApp sessions.</p>
             </div>
           )}
+
+          {canManage && sessionStatus?.status === 'DISCONNECTED' && (
+            <div className="py-10 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white">WhatsApp Gateway Engine Offline</p>
+                <p className="text-xs text-[#8696a0] mt-2 max-w-sm mx-auto">
+                  The Baileys WhatsApp backend is not reachable. If you are on Vercel, ensure your backend server (apps/api) is running locally on port 4000 or deployed, and is accessible.
+                </p>
+              </div>
+              <Button
+                onClick={() => startGateway(branchId)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-6 py-2 rounded-xl mt-4"
+              >
+                Retry Connection
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

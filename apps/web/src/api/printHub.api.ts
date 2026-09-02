@@ -409,7 +409,7 @@ export function useBranchWhatsAppConfigs() {
           return activeBranches.map((b: any) => {
             const cfg = (supaConfigs || []).find((c: any) => c.branchId === b.id);
             // Only use real stored numbers — never fallback to demo numbers
-            const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || null;
+            const waNum = cfg?.whatsappNumber || null;
             const isConn = cfg?.status === 'CONNECTED' && !!waNum;
             return {
               id: cfg?.id || `cfg-${b.id}`,
@@ -437,7 +437,7 @@ export function useBranchWhatsAppConfigs() {
           const parsed = JSON.parse(local);
           if (parsed && parsed.length > 0) {
             return parsed.map((b: any) => {
-              const waNum = b.whatsappNumber || b.phone || null;
+              const waNum = b.whatsappNumber || null;
               const isConn = b.sessionStatus === 'CONNECTED' && !!waNum;
               return {
                 id: `cfg-${b.id}`,

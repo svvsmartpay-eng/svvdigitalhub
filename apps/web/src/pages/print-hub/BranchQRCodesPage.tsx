@@ -55,10 +55,10 @@ export default function BranchQRCodesPage() {
   // Active Branch for Poster
   const activeBranch = (branchConfigs || []).find((b: any) => b.branchId === selectedBranchId) || branchConfigs?.[0];
 
-  const whatsappNumber = activeBranch?.whatsappNumber || activeBranch?.phoneNumber || '';
+  const whatsappNumber = activeBranch?.whatsappNumber || '';
   const rawDigits = whatsappNumber.replace(/[^0-9]/g, '');
   const cleanNumber = rawDigits.startsWith('91') && rawDigits.length === 12 ? rawDigits : rawDigits.length === 10 ? `91${rawDigits}` : rawDigits;
-  const qrLink = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(`Hi SVV ${activeBranch?.branchName || 'Print Desk'}, I want to print a document.`)}`;
+  const qrLink = activeBranch?.whatsappNumber ? `https://wa.me/${cleanNumber}?text=${encodeURIComponent(`Hi SVV ${activeBranch?.branchName || 'Print Desk'}, I want to print a document.`)}` : '';
 
   const handleOpenPairingModal = (b: any) => {
     setPairingBranch(b);
