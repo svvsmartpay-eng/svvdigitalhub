@@ -50,10 +50,7 @@ export default function WhatsAppGatewayModal({
   const [connectedNumber, setConnectedNumber] = useState<string>('');
   const [lastSync, setLastSync] = useState<string>('');
 
-  // QR
-  const [rawQr, setRawQr] = useState<string>('');
-  const [qrCountdown, setQrCountdown] = useState<number>(20);
-  const qrTimerRef = useRef<any>(null);
+
 
   // Actions
   const [loading, setLoading] = useState(false);
@@ -120,43 +117,6 @@ export default function WhatsAppGatewayModal({
     loadSession();
   }, [open, branchId]);
 
-  // ---------------------------------------------------------------------------
-  // Generate a fresh WhatsApp Web-format QR (for pairing scan)
-  // The QR encodes a wa.me link specific to the branch's configured phone.
-  // If no branch phone is set, show an error instead of a QR.
-  // ---------------------------------------------------------------------------
-  const generateQR = useCallback(() => {
-    if (!branchPhone) {
-      setRawQr('');
-      return;
-    }
-    const digits = branchPhone.replace(/[^0-9]/g, '');
-    const withCountry = digits.startsWith('91') && digits.length === 12 ? digits : `91${digits.slice(-10)}`;
-    // wa.me QR — scanned by ANY camera or WhatsApp to open a chat immediately
-    const link = `https://wa.me/${withCountry}?text=${encodeURIComponent(`Hi ${branchName || 'SVV Print Desk'}, I want to print a document.`)}`;
-    setRawQr(link);
-    setQrCountdown(20);
-  }, [branchPhone, branchName]);
-
-  useEffect(() => {
-    if (!open || sessionStatus !== 'DISCONNECTED') return;
-    generateQR();
-
-    if (qrTimerRef.current) clearInterval(qrTimerRef.current);
-    qrTimerRef.current = setInterval(() => {
-      setQrCountdown(prev => {
-        if (prev <= 1) {
-          generateQR();
-          return 20;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (qrTimerRef.current) clearInterval(qrTimerRef.current);
-    };
-  }, [open, sessionStatus, generateQR]);
 
   // ---------------------------------------------------------------------------
   // Save confirmed session to Supabase + localStorage
@@ -341,8 +301,6 @@ export default function WhatsAppGatewayModal({
 
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-5">
-
-          {/* Errors / Success */}
           {errorMsg && (
             <div className="p-3 bg-red-900/30 border border-red-500/50 rounded-xl text-red-200 text-xs flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
@@ -356,10 +314,9 @@ export default function WhatsAppGatewayModal({
             </div>
           )}
 
-          {/* Loading state */}
           {sessionStatus === 'LOADING' && (
             <div className="py-10 text-center text-[#8696a0] text-sm">
-              Checking session status...
+              Checking status...
             </div>
           )}
 
@@ -370,27 +327,21 @@ export default function WhatsAppGatewayModal({
                 <CheckCircle2 className="w-9 h-9" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">WhatsApp is Live!</h3>
+                <h3 className="text-lg font-bold text-white">WhatsApp is Active</h3>
                 <p className="text-xs text-[#8696a0] mt-1">
-                  Active Number: <strong className="text-emerald-400 font-mono text-sm">{connectedNumber}</strong>
+                  Receiving orders on: <strong className="text-emerald-400 font-mono text-sm">{connectedNumber}</strong>
                 </p>
-                {lastSync && (
-                  <p className="text-[11px] text-[#8696a0] mt-0.5">
-                    Last Sync: {new Date(lastSync).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })}
-                  </p>
-                )}
-                <p className="text-[11px] text-[#8696a0] mt-1">
-                  Customer documents sent to this number automatically create tickets in your queue.
+                <p className="text-[11px] text-[#8696a0] mt-3 bg-[#111b21] p-3 rounded-lg border border-[#222e35]">
+                  Customers can now send documents to this number, and they will appear directly in your Ticket Queue.
                 </p>
               </div>
 
               {canManage && (
-                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <div className="flex flex-col gap-3 pt-2 max-w-xs mx-auto">
                   <Button
                     onClick={handleTestOrder}
                     disabled={loading}
-                    size="sm"
-                    className="bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl cursor-pointer px-5"
+                    className="w-full bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 mr-1.5" /> Send Test Print Order
                   </Button>
@@ -398,92 +349,49 @@ export default function WhatsAppGatewayModal({
                     onClick={handleDisconnect}
                     disabled={loading}
                     variant="outline"
-                    size="sm"
-                    className="border-red-500/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 text-xs rounded-xl cursor-pointer px-5"
+                    className="w-full border-red-500/50 text-red-400 hover:bg-red-950/40 hover:text-red-300 text-xs rounded-xl cursor-pointer"
                   >
-                    <LogOut className="w-4 h-4 mr-1.5" /> Disconnect / Logout
+                    <LogOut className="w-4 h-4 mr-1.5" /> Disable WhatsApp Orders
                   </Button>
                 </div>
-              )}
-
-              {!canManage && (
-                <p className="text-xs text-[#8696a0]">
-                  Only Admins and Managers can manage WhatsApp sessions.
-                </p>
               )}
             </div>
           )}
 
-          {/* ── DISCONNECTED — QR SCAN ── */}
+          {/* ── DISCONNECTED ── */}
           {sessionStatus === 'DISCONNECTED' && (
             <div className="space-y-5">
               {!branchPhone && (
-                <div className="p-4 bg-amber-900/30 border border-amber-500/50 rounded-xl text-amber-200 text-xs space-y-2">
-                  <p className="font-bold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Branch Mobile Number Not Set</p>
-                  <p>Go to <strong>Branches → Edit Branch</strong> to set the WhatsApp mobile number for this branch. The QR code will then be generated automatically.</p>
+                <div className="p-4 bg-amber-900/30 border border-amber-500/50 rounded-xl text-amber-200 text-xs space-y-2 text-center">
+                  <AlertTriangle className="w-8 h-8 mx-auto mb-2 opacity-80" />
+                  <p className="font-bold text-sm">No Phone Number Set</p>
+                  <p>Go to <strong>Branches → Edit Branch</strong> to set the WhatsApp mobile number first.</p>
                 </div>
               )}
 
               {branchPhone && canManage && (
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                  {/* Instructions */}
-                  <div className="md:col-span-6 space-y-4">
-                    <h2 className="text-base font-bold text-white">Activate WhatsApp Webhook</h2>
-                    <ol className="space-y-3 text-xs text-[#d1d7db]">
-                      <li className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
-                        <span>The number <strong>{branchPhone}</strong> is assigned to this branch.</span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
-                        <span><strong>Do NOT scan this QR with "Linked Devices".</strong> It will say Invalid QR.</span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
-                        <span>This QR code is for your <strong>CUSTOMERS</strong> to scan using their regular phone camera to send you documents.</span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">4</span>
-                        <span>Click the button below to turn on the webhook automation for this branch.</span>
-                      </li>
-                    </ol>
-
-                    <div className="pt-2">
-                      <Button
-                        onClick={handleConfirmLinked}
-                        disabled={loading}
-                        className="w-full bg-[#00a884] hover:bg-[#02906f] text-white font-bold h-11 rounded-xl cursor-pointer shadow-md border-b-2 border-emerald-800 active:translate-y-px active:border-b-0 flex items-center justify-center"
-                      >
-                        <CheckCircle2 className="w-4 h-4 mr-2" /> Activate — {branchPhone}
-                      </Button>
-                    </div>
+                <div className="bg-[#202c33] rounded-2xl p-6 border border-[#222e35] text-center space-y-5">
+                  <div className="w-16 h-16 rounded-full bg-blue-500/10 border-2 border-blue-500/30 flex items-center justify-center text-blue-400 mx-auto">
+                    <MessageSquare className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Enable WhatsApp Orders</h3>
+                    <p className="text-sm text-[#8696a0] mt-2">
+                      Branch Number: <strong className="text-white font-mono">{branchPhone}</strong>
+                    </p>
+                    <p className="text-[11px] text-[#8696a0] mt-3">
+                      Click the button below to allow this branch to receive automated print tickets via WhatsApp.
+                    </p>
                   </div>
 
-                  {/* QR Code */}
-                  <div className="md:col-span-6 flex flex-col items-center justify-center">
-                    <div className="bg-white p-4 rounded-3xl shadow-xl border-4 border-[#222e35] relative">
-                      {rawQr ? (
-                        <>
-                          <QRCodeSVG
-                            value={rawQr}
-                            size={220}
-                            level="H"
-                            includeMargin={false}
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#00a884] shadow-md border-2 border-[#00a884]">
-                              <MessageSquare className="w-6 h-6 fill-current" />
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="w-[220px] h-[220px] bg-gray-100 animate-pulse rounded-xl"></div>
-                      )}
-                    </div>
-                    <div className="mt-4 flex items-center gap-2 text-xs text-[#8696a0]">
-                      <span className="w-2 h-2 rounded-full bg-[#00a884] animate-pulse"></span>
-                      Customer Desk QR (wa.me)
-                    </div>
+                  <div className="pt-2 max-w-xs mx-auto">
+                    <Button
+                      onClick={handleConfirmLinked}
+                      disabled={loading}
+                      className="w-full bg-[#00a884] hover:bg-[#02906f] text-white font-bold h-12 rounded-xl cursor-pointer shadow-md"
+                    >
+                      <CheckCircle2 className="w-5 h-5 mr-2" /> Enable Now
+                    </Button>
                   </div>
                 </div>
               )}
@@ -492,10 +400,10 @@ export default function WhatsAppGatewayModal({
               {!canManage && (
                 <div className="py-10 text-center space-y-2">
                   <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mx-auto">
-                    <QrCode className="w-6 h-6" />
+                    <AlertTriangle className="w-6 h-6" />
                   </div>
-                  <p className="text-sm font-bold text-white">WhatsApp Disconnected</p>
-                  <p className="text-xs text-[#8696a0]">Contact your Branch Manager or Admin to reconnect WhatsApp.</p>
+                  <p className="text-sm font-bold text-white">WhatsApp is Disabled</p>
+                  <p className="text-xs text-[#8696a0]">Contact your Branch Manager or Admin to enable WhatsApp orders.</p>
                 </div>
               )}
             </div>
