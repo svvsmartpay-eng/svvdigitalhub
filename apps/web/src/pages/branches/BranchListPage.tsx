@@ -75,20 +75,7 @@ export default function BranchListPage() {
       const { data: users } = await supabase.from('users').select('branchId');
       const { data: orders } = await supabase.from('print_orders').select('branchId');
 
-      if (cached && cached.length > 0) {
-        const merged = cached.map(b => {
-          const aCount = assets?.filter((a: any) => a.branchId === b.id).length || b.assetsCount || 10;
-          const uCount = users?.filter((u: any) => u.branchId === b.id).length || b.staffCount || 3;
-          const oCount = orders?.filter((o: any) => o.branchId === b.id).length || b.ordersCount || 0;
-          return {
-            ...b,
-            staffCount: uCount,
-            assetsCount: aCount,
-            ordersCount: oCount,
-          };
-        });
-        setBranches(merged);
-      } else if (activeRows.length > 0) {
+      if (activeRows.length > 0) {
         const enriched: BranchItem[] = activeRows.map((b: any) => {
           const wa = waConfigs?.find((w: any) => w.branchId === b.id);
           const aCount = assets?.filter((a: any) => a.branchId === b.id).length || 0;
@@ -97,12 +84,12 @@ export default function BranchListPage() {
 
           return {
             ...b,
-            whatsappNumber: wa?.whatsappNumber || b.whatsappNumber || b.phone || null,
-            sessionStatus: (wa?.status === 'CONNECTED' && !!(wa?.whatsappNumber || b.whatsappNumber)) ? 'CONNECTED' : 'OFFLINE',
+            whatsappNumber: wa?.whatsappNumber || b.whatsappNumber || null, // ONLY real numbers
+            sessionStatus: (wa?.status === 'CONNECTED' && wa?.whatsappNumber) ? 'CONNECTED' : 'OFFLINE',
             status: 'ACTIVE',
-            staffCount: uCount || (b.code === 'SVV-1' ? 4 : 3),
-            assetsCount: aCount || (b.code === 'SVV-1' ? 32 : 27),
-            ordersCount: oCount || (b.code === 'SVV-1' ? 14 : 4),
+            staffCount: uCount,
+            assetsCount: aCount,
+            ordersCount: oCount,
           };
         });
 
@@ -111,42 +98,9 @@ export default function BranchListPage() {
           localStorage.setItem('svv_branches_store', JSON.stringify(enriched));
         } catch {}
       } else {
-        // Default seed branches
-        const defaultList: BranchItem[] = [
-          {
-            id: 'f5abaacc-d2b6-4591-91fb-314b2188e18c',
-            name: 'SVV Main Hub',
-            code: 'SVV-1',
-            city: 'Isnapur',
-            state: 'Telangana',
-            address: 'Main Road, Isnapur Chowrasta',
-            phone: '',
-            whatsappNumber: '',
-            status: 'ACTIVE',
-            sessionStatus: 'OFFLINE',
-            staffCount: 4,
-            assetsCount: 32,
-            ordersCount: 18,
-          },
-          {
-            id: 'branch-2',
-            name: 'Branch 2 (Patancheru)',
-            code: 'SVV-2',
-            city: 'Patancheru',
-            state: 'Telangana',
-            address: 'Near Bus Stand, Patancheru',
-            phone: '',
-            whatsappNumber: '',
-            status: 'ACTIVE',
-            sessionStatus: 'OFFLINE',
-            staffCount: 3,
-            assetsCount: 27,
-            ordersCount: 8,
-          }
-        ];
-        setBranches(defaultList);
+        setBranches([]);
         try {
-          localStorage.setItem('svv_branches_store', JSON.stringify(defaultList));
+          localStorage.removeItem('svv_branches_store');
         } catch {}
       }
     } catch (err: any) {

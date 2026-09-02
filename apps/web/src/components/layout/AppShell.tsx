@@ -10,7 +10,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { useLogout } from '@/api/auth.api';
 import GlobalFilters from '@/components/shared/GlobalFilters';
-import GlobalWhatsAppStatus from '@/components/shared/GlobalWhatsAppStatus';
 import DailyAlerts from '@/components/shared/DailyAlerts';
 import NotificationCenter from '@/components/shared/NotificationCenter';
 import { useTaskStats } from '@/api/tasks.api';
@@ -236,7 +235,7 @@ export default function AppShell() {
             <div className="md:hidden font-bold text-[#1e3a5f]">SVV AMS</div>
           </div>
           <div className="flex items-center gap-3 ml-auto">
-            <GlobalWhatsAppStatus />
+            
             <GlobalFilters />
             <NotificationCenter />
           </div>
