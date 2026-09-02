@@ -1849,6 +1849,7 @@ model PrintOrder {
   assignedStaffId String?
   completedAt    DateTime?
   deliveredAt    DateTime?
+  metadata       Json?            // Store file-level statuses e.g. { "file-id": { isPrinted: true } }
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 

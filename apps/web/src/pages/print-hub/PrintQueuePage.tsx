@@ -1620,15 +1620,7 @@ export default function PrintQueuePage() {
       )}
 
       {/* ── WHATSAPP GATEWAY PAIRING & TEST INGEST MODAL ───────────────────────── */}
-      <WhatsAppGatewayModal
-        open={showGatewayModal}
-        onClose={() => setShowGatewayModal(false)}
-        branchId={branchId}
-        onOrderCreated={() => {
-          refetch();
-          refetchWhatsApp();
-        }}
-      />
+      
     </div>
   );
 }

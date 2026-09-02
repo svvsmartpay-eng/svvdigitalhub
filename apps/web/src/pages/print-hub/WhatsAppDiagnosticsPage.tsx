@@ -444,16 +444,6 @@ export default function WhatsAppDiagnosticsPage() {
           ))}
         </div>
       )}
-
-      {/* WhatsApp Modal for reconnect */}
-      {selectedBranchId && (
-        <WhatsAppGatewayModal
-          open={true}
-          onClose={() => { setSelectedBranchId(null); loadDiagnostics(); }}
-          branchId={selectedBranchId}
-          onOrderCreated={() => { setSelectedBranchId(null); loadDiagnostics(); }}
-        />
-      )}
     </div>
   );
 }

@@ -189,12 +189,13 @@ export async function updatePrintOrderStatus(
   // Automated WhatsApp Status Alerts matching exact business workflow
   try {
     let msgText = '';
-    if (status === 'PRINTING') {
-      msgText = `📌 Your document is being processed.\nToken: ${updated.tokenNumber}`;
-    } else if (status === 'READY_FOR_DELIVERY') {
-      msgText = `📌 Your document is ready for printing.\nToken: ${updated.tokenNumber}`;
-    } else if (status === 'DELIVERED') {
-      msgText = `✅ Your work has been completed.\nToken: ${updated.tokenNumber}\nThank you for using SVV Communications.`;
+    
+    // As per requirements: "No Processing Message"
+    // Only ONE completion message when status changes to READY_FOR_DELIVERY
+    if (status === 'READY_FOR_DELIVERY') {
+      // Get total files count (pageCount approximates total files grouped)
+      const filesCount = updated.pageCount || 1;
+      msgText = `✅ Print Job Completed\n\nToken : ${updated.tokenNumber}\n\nFiles Printed : ${filesCount}/${filesCount}\n\nReady For Pickup\n\nSVV Communications`;
     }
 
     if (msgText) {
@@ -340,7 +341,8 @@ export async function processIncomingWhatsAppMessage(params: {
       },
     });
 
-    autoReplyText = `Your document received successfully.\nToken No: ${existingActiveOrder.tokenNumber}\nReceived Time: ${receivedTime}`;
+    // DO NOT send a duplicate "Received" message for consecutive files in the same order
+    autoReplyText = '';
   } else {
     // Generate a fresh unique sequential token ID
     const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
@@ -375,7 +377,7 @@ export async function processIncomingWhatsAppMessage(params: {
       },
     });
 
-    autoReplyText = `Your document received successfully.\nToken No: ${tokenNumber}\nReceived Time: ${receivedTime}`;
+    autoReplyText = `✅ Document Received\n\nToken: ${tokenNumber}\n\nTime:\n${receivedTime}`;
   }
 
   // Link message to order

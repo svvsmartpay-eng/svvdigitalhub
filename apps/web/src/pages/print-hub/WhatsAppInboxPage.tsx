@@ -2031,14 +2031,7 @@ export default function WhatsAppInboxPage() {
             </div>
           )}
 
-          <Button
-            size="sm"
-            onClick={() => setShowGatewayModal(true)}
-            className="h-8 text-xs font-bold bg-[#198754] hover:bg-[#157347] text-white border border-[#157347] cursor-pointer rounded-xl flex items-center gap-1.5"
-            title="Scan QR Code to link WhatsApp"
-          >
-            <Smartphone className="w-3.5 h-3.5" /> 📱 Link WhatsApp
-          </Button>
+          
 
           <Button
             size="sm"
