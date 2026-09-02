@@ -164,16 +164,17 @@ export default function WhatsAppGatewayModal({
   const saveSession = async (phone: string) => {
     // Update Supabase
     try {
-      await supabase.from('branch_whatsapp_configs').upsert({
+      const { error } = await supabase.from('branch_whatsapp_configs').upsert({
         branchId,
         organizationId: 'svv-org-001',
         status: 'CONNECTED',
         whatsappNumber: phone,
-        connectedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }, { onConflict: 'branchId' });
-    } catch (e) {
-      console.warn('Supabase upsert warning:', e);
+      if (error) throw new Error(error.message || 'Database error while saving WhatsApp config');
+    } catch (e: any) {
+      console.warn('Supabase upsert error:', e);
+      throw e;
     }
 
     // Update localStorage
