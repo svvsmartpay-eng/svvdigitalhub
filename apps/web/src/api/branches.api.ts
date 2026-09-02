@@ -23,8 +23,8 @@ export const DEFAULT_BRANCHES: BranchRecord[] = [
     city: 'Isnapur',
     state: 'Telangana',
     address: 'Main Road, Isnapur Chowrasta, Hyderabad',
-    phone: '+91 77386 63866',
-    whatsappNumber: '+91 77386 63866',
+    phone: '',
+    whatsappNumber: '',
     status: 'ACTIVE',
     isActive: true,
   },
@@ -35,8 +35,8 @@ export const DEFAULT_BRANCHES: BranchRecord[] = [
     city: 'Patancheru',
     state: 'Telangana',
     address: 'Near Bus Stand, Patancheru, Hyderabad',
-    phone: '+91 99515 27090',
-    whatsappNumber: '+91 99515 27090',
+    phone: '',
+    whatsappNumber: '',
     status: 'ACTIVE',
     isActive: true,
   }
@@ -67,7 +67,7 @@ export function useBranches() {
             const mapped = activeOnly.map((b: any) => ({
               ...b,
               city: b.city || (b.code === 'SVV-1' ? 'Isnapur' : 'Patancheru'),
-              whatsappNumber: b.whatsappNumber || b.phone || (b.code === 'SVV-1' ? '+91 77386 63866' : '+91 99515 27090'),
+              whatsappNumber: b.whatsappNumber || b.phone || '',
             }));
             try {
               localStorage.setItem('svv_branches_store', JSON.stringify(mapped));

@@ -48,7 +48,7 @@ export default function BranchListPage() {
   const [formCity, setFormCity] = useState<string>('Hyderabad');
   const [formState, setFormState] = useState<string>('Telangana');
   const [formPhone, setFormPhone] = useState<string>('');
-  const [formWhatsApp, setFormWhatsApp] = useState<string>('+91 77386 63866');
+  const [formWhatsApp, setFormWhatsApp] = useState<string>('');
   const [formManager, setFormManager] = useState<string>('');
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -634,7 +634,7 @@ export default function BranchListPage() {
                     type="text"
                     value={formWhatsApp}
                     onChange={(e) => setFormWhatsApp(e.target.value)}
-                    placeholder="+91 77386 63866"
+                    placeholder="+91 99999 99999"
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 text-xs font-mono font-bold"
                   />
                 </div>

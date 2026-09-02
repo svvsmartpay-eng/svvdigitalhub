@@ -48,9 +48,9 @@ export default function SystemDiagnosticsPage() {
       channel: 'print_hub_realtime_stream',
     },
     whatsapp: {
-      status: 'CONNECTED',
-      line: '+91 77386 63866',
-      lastMsgTime: '12:37 AM',
+      status: 'DISCONNECTED',
+      line: 'Not configured',
+      lastMsgTime: '-',
     },
     modules: {
       staff: { count: 7, loaded: true },
@@ -98,7 +98,7 @@ export default function SystemDiagnosticsPage() {
         .from('branch_whatsapp_configs')
         .select('*');
 
-      const activeLine = configs?.[0]?.whatsappNumber || '+91 77386 63866';
+      const activeLine = configs?.[0]?.whatsappNumber || 'Not configured';
       const isWAConnected = configs?.[0]?.status === 'ACTIVE' || configs?.[0]?.status === 'CONNECTED';
 
       const latency = Math.round(performance.now() - start);

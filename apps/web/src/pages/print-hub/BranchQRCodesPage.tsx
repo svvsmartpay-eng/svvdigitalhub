@@ -55,7 +55,7 @@ export default function BranchQRCodesPage() {
   // Active Branch for Poster
   const activeBranch = (branchConfigs || []).find((b: any) => b.branchId === selectedBranchId) || branchConfigs?.[0];
 
-  const whatsappNumber = activeBranch?.whatsappNumber || activeBranch?.phoneNumber || '+91 77386 63866';
+  const whatsappNumber = activeBranch?.whatsappNumber || activeBranch?.phoneNumber || '';
   const rawDigits = whatsappNumber.replace(/[^0-9]/g, '');
   const cleanNumber = rawDigits.startsWith('91') && rawDigits.length === 12 ? rawDigits : rawDigits.length === 10 ? `91${rawDigits}` : rawDigits;
   const qrLink = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(`Hi SVV ${activeBranch?.branchName || 'Print Desk'}, I want to print a document.`)}`;
@@ -66,7 +66,7 @@ export default function BranchQRCodesPage() {
 
   const handleOpenEditModal = (b: any) => {
     setEditingBranch(b);
-    setPhoneInput(b.whatsappNumber || b.phoneNumber || '+91 77386 63866');
+    setPhoneInput(b.whatsappNumber || b.phoneNumber || '');
     setDisplayNameInput(b.displayName || `${b.branchName} Print Desk`);
     setWelcomeMsgInput(b.welcomeMessage || `Welcome to SVV ${b.branchName} Print Desk! Send your PDF or image documents here for instant printing.`);
     setStatusInput(b.status || 'ACTIVE');
@@ -191,7 +191,7 @@ export default function BranchQRCodesPage() {
                   type="text"
                   value={phoneInput}
                   onChange={(e) => setPhoneInput(e.target.value)}
-                  placeholder="+91 77386 63866"
+                  placeholder="+91 99999 99999"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl font-mono text-xs focus:ring-2 focus:ring-blue-600 focus:outline-none"
                   required
                 />
