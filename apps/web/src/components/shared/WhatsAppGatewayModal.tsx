@@ -428,70 +428,61 @@ export default function WhatsAppGatewayModal({
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
                   {/* Instructions */}
                   <div className="md:col-span-6 space-y-4">
-                    <h2 className="text-base font-bold text-white">Link Shop WhatsApp Account</h2>
+                    <h2 className="text-base font-bold text-white">Activate WhatsApp Webhook</h2>
                     <ol className="space-y-3 text-xs text-[#d1d7db]">
                       <li className="flex items-start gap-2.5">
                         <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
-                        <span>Open <strong>WhatsApp Business</strong> on your shop phone ({branchPhone})</span>
+                        <span>The number <strong>{branchPhone}</strong> is assigned to this branch.</span>
                       </li>
                       <li className="flex items-start gap-2.5">
                         <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">2</span>
-                        <span>Tap <strong>Menu ⋮</strong> (Android) or <strong>Settings ⚙</strong> (iPhone)</span>
+                        <span><strong>Do NOT scan this QR with "Linked Devices".</strong> It will say Invalid QR.</span>
                       </li>
                       <li className="flex items-start gap-2.5">
                         <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
-                        <span>Tap <strong>Linked Devices → Link a Device</strong></span>
+                        <span>This QR code is for your <strong>CUSTOMERS</strong> to scan using their regular phone camera to send you documents.</span>
                       </li>
                       <li className="flex items-start gap-2.5">
                         <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">4</span>
-                        <span>Point your camera to the QR code on the right</span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 rounded-full bg-[#00a884]/20 text-[#00a884] font-bold flex items-center justify-center shrink-0 text-[11px]">5</span>
-                        <span>Click <strong>"Confirm Linked"</strong> below after scanning</span>
+                        <span>Click the button below to turn on the webhook automation for this branch.</span>
                       </li>
                     </ol>
 
-                    <Button
-                      onClick={handleConfirmLinked}
-                      disabled={loading}
-                      className="w-full h-11 bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Confirm Linked — {branchPhone}</span>
-                    </Button>
+                    <div className="pt-2">
+                      <Button
+                        onClick={handleConfirmLinked}
+                        disabled={loading}
+                        className="w-full bg-[#00a884] hover:bg-[#02906f] text-white font-bold h-11 rounded-xl cursor-pointer shadow-md border-b-2 border-emerald-800 active:translate-y-px active:border-b-0 flex items-center justify-center"
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Activate — {branchPhone}
+                      </Button>
+                    </div>
                   </div>
 
                   {/* QR Code */}
-                  <div className="md:col-span-6 flex flex-col items-center">
-                    <div className="bg-white p-3 rounded-2xl shadow-xl border-4 border-[#111b21] relative">
+                  <div className="md:col-span-6 flex flex-col items-center justify-center">
+                    <div className="bg-white p-4 rounded-3xl shadow-xl border-4 border-[#222e35] relative">
                       {rawQr ? (
-                        <QRCodeSVG
-                          value={rawQr}
-                          size={190}
-                          level="H"
-                          includeMargin={false}
-                        />
-                      ) : (
-                        <div className="w-[190px] h-[190px] flex items-center justify-center text-gray-400 text-xs text-center p-4">
-                          Set branch phone number to generate QR
-                        </div>
-                      )}
-                      {rawQr && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-[#00a884] shadow-md">
-                            <MessageSquare className="w-5 h-5 fill-current" />
+                        <>
+                          <QRCodeSVG
+                            value={rawQr}
+                            size={220}
+                            level="H"
+                            includeMargin={false}
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-[#00a884] shadow-md border-2 border-[#00a884]">
+                              <MessageSquare className="w-6 h-6 fill-current" />
+                            </div>
                           </div>
-                        </div>
+                        </>
+                      ) : (
+                        <div className="w-[220px] h-[220px] bg-gray-100 animate-pulse rounded-xl"></div>
                       )}
                     </div>
-
-                    <div className="mt-3 flex items-center gap-2 text-xs text-[#8696a0]">
-                      <span className="w-2 h-2 rounded-full bg-[#00a884] animate-pulse" />
-                      <span>QR refreshes in <strong>{qrCountdown}s</strong></span>
-                      <button onClick={generateQR} className="text-[#00a884] hover:text-white underline text-[11px] cursor-pointer ml-2">
-                        Refresh
-                      </button>
+                    <div className="mt-4 flex items-center gap-2 text-xs text-[#8696a0]">
+                      <span className="w-2 h-2 rounded-full bg-[#00a884] animate-pulse"></span>
+                      Customer Desk QR (wa.me)
                     </div>
                   </div>
                 </div>
