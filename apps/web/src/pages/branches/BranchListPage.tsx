@@ -117,7 +117,7 @@ export default function BranchListPage() {
   const handleOpenCreate = () => {
     setEditingBranch(null);
     setFormName('');
-    setFormCode(`SVV-${branches.length + 1}`);
+    setFormCode(`SVV-${Math.floor(Math.random() * 900) + 100}`);
     setFormAddress('');
     setFormCity('Hyderabad');
     setFormState('Telangana');
@@ -172,24 +172,20 @@ export default function BranchListPage() {
       payload.createdAt = now;
     }
 
-    try {
       try {
-        await supabase.from('branches').upsert(payload, { onConflict: 'id' });
-      } catch (e) {
-        console.warn('Supabase branch upsert:', e);
-      }
+        const { error: branchError } = await supabase.from('branches').upsert(payload, { onConflict: 'id' });
+        if (branchError) throw new Error(branchError.message || 'Database error while saving branch');
 
-      if (formWhatsApp.trim()) {
-        try {
-          await supabase.from('branch_whatsapp_configs').upsert({
+        if (formWhatsApp.trim()) {
+          const { error: waError } = await supabase.from('branch_whatsapp_configs').upsert({
             branchId,
             organizationId: 'svv-org-001',
             whatsappNumber: formWhatsApp.trim(),
             displayName: `${formName} (${formCode})`,
             updatedAt: now,
           }, { onConflict: 'branchId' });
-        } catch {}
-      }
+          if (waError) console.warn('Supabase WA upsert error:', waError);
+        }
 
       try {
         if (editingBranch) {
