@@ -409,7 +409,7 @@ export function useBranchWhatsAppConfigs() {
           return activeBranches.map((b: any) => {
             const cfg = (supaConfigs || []).find((c: any) => c.branchId === b.id);
             // Only use real stored numbers — never fallback to demo numbers
-            const waNum = cfg?.whatsappNumber || null;
+            const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || null;
             const isConn = cfg?.status === 'CONNECTED' && !!waNum;
             return {
               id: cfg?.id || `cfg-${b.id}`,
@@ -437,7 +437,7 @@ export function useBranchWhatsAppConfigs() {
           const parsed = JSON.parse(local);
           if (parsed && parsed.length > 0) {
             return parsed.map((b: any) => {
-              const waNum = b.whatsappNumber || null;
+              const waNum = b.whatsappNumber || b.phone || null;
               const isConn = b.sessionStatus === 'CONNECTED' && !!waNum;
               return {
                 id: `cfg-${b.id}`,
@@ -524,13 +524,8 @@ export function useStartWhatsAppGateway() {
       try {
         const res = await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/start`);
         if (res.data?.data) return res.data.data;
-      } catch {
-        try {
-          const raw = await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/start`, { method: 'POST' });
-          const json = await raw.json();
-          if (json?.data) return json.data;
-        } catch {}
-      }
+      } catch {}
+
       return { status: 'SCAN_QR_REQUIRED' };
     },
     onSuccess: (_, branchId) => {
@@ -548,13 +543,7 @@ export function useWhatsAppGatewayStatus(branchId?: string, enabled = true) {
       try {
         const res = await apiClient.get(`/print-hub/whatsapp/gateway/${branchId}/status`);
         if (res.data?.data) return res.data.data;
-      } catch {
-        try {
-          const raw = await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/status`);
-          const json = await raw.json();
-          if (json?.data) return json.data;
-        } catch {}
-      }
+      } catch {}
 
       try {
         const { data: cfg } = await supabase

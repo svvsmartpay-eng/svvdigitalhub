@@ -179,6 +179,18 @@ export default function BranchListPage() {
         console.warn('Supabase branch upsert:', e);
       }
 
+      if (formWhatsApp.trim()) {
+        try {
+          await supabase.from('branch_whatsapp_configs').upsert({
+            branchId,
+            organizationId: 'svv-org-001',
+            whatsappNumber: formWhatsApp.trim(),
+            displayName: `${formName} (${formCode})`,
+            updatedAt: now,
+          }, { onConflict: 'branchId' });
+        } catch {}
+      }
+
       try {
         if (editingBranch) {
           await apiClient.put(`/branches/${branchId}`, payload);
@@ -199,7 +211,7 @@ export default function BranchListPage() {
           status: 'ACTIVE',
           // Preserve existing sessionStatus — do NOT reset to OFFLINE on branch edit
           sessionStatus: editingBranch?.sessionStatus || 'OFFLINE',
-          whatsappNumber: editingBranch?.whatsappNumber || undefined,
+          whatsappNumber: formWhatsApp.trim() || undefined,
           staffCount: editingBranch?.staffCount || 3,
           assetsCount: editingBranch?.assetsCount || 10,
           ordersCount: editingBranch?.ordersCount || 0,
@@ -567,6 +579,16 @@ export default function BranchListPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">WhatsApp Business Number</label>
+                  <input
+                    type="text"
+                    value={formWhatsApp}
+                    onChange={(e) => setFormWhatsApp(e.target.value)}
+                    placeholder="+91 99999 99999"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 text-xs font-mono font-bold"
+                  />
+                </div>
                 <div>
                   <label className="font-bold text-gray-700 block mb-1">Branch Manager / Contact</label>
                   <input
