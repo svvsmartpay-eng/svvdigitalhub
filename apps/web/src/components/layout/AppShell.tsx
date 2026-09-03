@@ -10,6 +10,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { useLogout } from '@/api/auth.api';
 import GlobalFilters from '@/components/shared/GlobalFilters';
+import GlobalBranchWizardModal from '@/components/branches/GlobalBranchWizardModal';
+import { useBranchWizardStore } from '@/store/branchWizardStore';
+import { Plus } from 'lucide-react';
 import DailyAlerts from '@/components/shared/DailyAlerts';
 import NotificationCenter from '@/components/shared/NotificationCenter';
 import { useTaskStats } from '@/api/tasks.api';
@@ -19,6 +22,7 @@ import { usePluginSettings } from '@/api/plugins.api';
 import { usePrintHubAnalytics } from '@/api/printHub.api';
 
 export default function AppShell() {
+  const { openWizard } = useBranchWizardStore();
   const { user } = useAuthStore();
   const location = useLocation();
   const logoutMutation = useLogout();
@@ -247,7 +251,8 @@ export default function AppShell() {
         
         <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative p-4 md:p-6 bg-gray-50">
           <Outlet />
-        </main>
+            <GlobalBranchWizardModal />
+          </main>
       </div>
     </div>
   );
