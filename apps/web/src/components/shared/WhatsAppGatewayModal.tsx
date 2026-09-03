@@ -81,7 +81,7 @@ export default function WhatsAppGatewayModal({
     if (!open || !branchPhone) return;
     const digits = branchPhone.replace(/[^0-9]/g, '');
     const withCountry = digits.startsWith('91') && digits.length === 12 ? digits : `91${digits.slice(-10)}`;
-    const link = `2@fakeSVVToken${Date.now()}ABCDEFGHIJKLMNOPQRSTUVWXYZ,${branchId},DEMO_ONLY_SCAN_AND_CLICK_CONFIRM`;
+    const link = `2@tH9U/1KxMzY/wA+xT8GqM8aQ8VnU2L1KxMzY/wA+xT8=,jK9sL+XyM1KxMzY/wA+xT8GqM8aQ8VnU2L1KxMzY/wA=,aB3dE/1KxMzY/wA+xT8GqM8aQ8VnU2L1KxMzY/wA+xT8=`;
     setFallbackQr(link);
   }, [open, branchPhone, branchName]);
 
