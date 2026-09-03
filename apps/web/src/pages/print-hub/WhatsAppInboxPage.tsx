@@ -2314,119 +2314,53 @@ export default function WhatsAppInboxPage() {
               </div>
             )}
 
-{/* Editing Tools Controls */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-              <button
-                onClick={() => setCropToolType('FREE_TRANSFORM')}
-                className={`px-2 py-1 rounded-lg font-bold text-[10px] flex items-center gap-1 shrink-0 cursor-pointer ${cropToolType === 'FREE_TRANSFORM' ? 'bg-[#0D6EFD] text-white shadow-2xs' : 'bg-[#F8FAFC] text-[#495057] border border-[#E2E8F0]'}`}
-                title="Free Crop"
-              >
-                <Crop className="w-3 h-3" /> Free Crop
-              </button>
-
-              <button
-                onClick={() => setCropToolType('SCANNER_CORNER_PERSPECTIVE')}
-                className={`px-2 py-1 rounded-lg font-bold text-[10px] flex items-center gap-1 shrink-0 cursor-pointer ${cropToolType === 'SCANNER_CORNER_PERSPECTIVE' ? 'bg-[#0D6EFD] text-white shadow-2xs' : 'bg-[#F8FAFC] text-[#495057] border border-[#E2E8F0]'}`}
-                title="4-Corner Scanner Perspective"
-              >
-                <Sliders className="w-3 h-3" /> 4-Corner
-              </button>
-
-              <button
-                onClick={handleAutoDetectEdges}
-                className="px-2 py-1 rounded-lg bg-[#E8F5E9] hover:bg-[#DCFCE7] text-[#198754] font-bold text-[10px] border border-[#86EFAC] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Auto Crop & Detect Document"
-              >
-                <Sparkles className="w-3 h-3" /> Auto Crop / Detect
-              </button>
-              
-              <div className="w-px h-4 bg-[#CBD5E1] mx-1 shrink-0"></div>
-
-              <button
-                onClick={() => alert("Deskew algorithm initialized...")}
-                className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Auto Deskew"
-              >
-                <Wand2 className="w-3 h-3 text-[#6F42C1]" /> Deskew
-              </button>
-
-              <button
-                onClick={() => rotateSourceImage(90)}
-                className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Rotate 90�"
-              >
-                <RotateCw className="w-3 h-3 text-[#0D6EFD]" /> Rotate
-              </button>
-
-              <button
-                onClick={() => alert("Flip horizontally")}
-                className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Flip"
-              >
-                <FlipHorizontal className="w-3 h-3 text-[#0D6EFD]" /> Flip
-              </button>
-              
-              <div className="w-px h-4 bg-[#CBD5E1] mx-1 shrink-0"></div>
-
-              <button
-                onClick={() => alert("Brightness/Contrast filter")}
-                className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Brightness +10%"
-              >
-                <Sun className="w-3 h-3 text-[#EAB308]" /> Brightness
-              </button>
-
-              <button
-                onClick={() => alert("Brightness/Contrast filter")}
-                className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Contrast +10%"
-              >
-                <Contrast className="w-3 h-3 text-[#14B8A6]" /> Contrast
-              </button>
-              
-              <button
-                onClick={() => alert("Sharpness filter applied")}
-                className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Sharpness"
-              >
-                <Focus className="w-3 h-3 text-[#EF4444]" /> Sharpness
-              </button>
-              
-              <button
-                onClick={() => alert("Background Removal AI initialized")}
-                className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Background Remove"
-              >
-                <Eraser className="w-3 h-3 text-[#F97316]" /> BG Remove
-              </button>
-
-              <div className="w-px h-4 bg-[#CBD5E1] mx-1 shrink-0"></div>
-
-              <button
-                onClick={() => alert("Passport Mode")}
-                className="px-2 py-1 rounded-lg bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#198754] font-bold text-[10px] border border-[#BBF7D0] flex items-center gap-1 shrink-0 cursor-pointer"
-              >
-                <Camera className="w-3 h-3" /> Passport Mode
-              </button>
-              
-              <button
-                onClick={() => alert("PVC Mode")}
-                className="px-2 py-1 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#0D6EFD] font-bold text-[10px] border border-[#BFDBFE] flex items-center gap-1 shrink-0 cursor-pointer"
-              >
-                <CreditCard className="w-3 h-3" /> PVC Mode
-              </button>
-
-              <button
-                onClick={handleResetQuad}
-                className="p-1.5 rounded-lg bg-[#FFF4EC] hover:bg-[#FED7AA] text-[#EA580C] border border-[#FDBA74] shrink-0 cursor-pointer ml-1"
-                title="Reset Crop"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
             </div>
-          </div>
 
-          {/* Interactive Canvas Viewport */}
+<div className="flex-1 flex flex-row overflow-hidden relative w-full">
+
+              {/* Vertical Editing Tools Controls */}
+              <div className="w-14 bg-[#FFFFFF] border-r border-[#E2E8F0] flex flex-col items-center py-3 gap-3 shrink-0 z-10 overflow-y-auto no-scrollbar shadow-sm">
+                <button onClick={() => setCropToolType('FREE_TRANSFORM')} className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${cropToolType === 'FREE_TRANSFORM' ? 'bg-[#0D6EFD] text-white shadow-xs' : 'bg-[#F8FAFC] text-[#495057] hover:bg-[#E2E8F0] border border-[#E2E8F0]'}`} title="Free Crop">
+                  <Crop className="w-4 h-4" />
+                  <span className="text-[8px] font-bold leading-none">Crop</span>
+                </button>
+                <button onClick={() => setCropToolType('SCANNER_CORNER_PERSPECTIVE')} className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${cropToolType === 'SCANNER_CORNER_PERSPECTIVE' ? 'bg-[#0D6EFD] text-white shadow-xs' : 'bg-[#F8FAFC] text-[#495057] hover:bg-[#E2E8F0] border border-[#E2E8F0]'}`} title="4-Corner Scanner">
+                  <Sliders className="w-4 h-4" />
+                  <span className="text-[8px] font-bold leading-none">Scan</span>
+                </button>
+                <button onClick={handleAutoDetectEdges} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#E8F5E9] hover:bg-[#DCFCE7] text-[#198754] border border-[#86EFAC] cursor-pointer shadow-xs" title="Auto Crop & Detect">
+                  <Sparkles className="w-4 h-4" />
+                  <span className="text-[8px] font-bold leading-none">Auto</span>
+                </button>
+                <div className="w-6 h-px bg-[#CBD5E1] shrink-0 my-0.5"></div>
+                <button onClick={() => alert("Deskew algorithm initialized...")} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Deskew">
+                  <Wand2 className="w-4 h-4 text-[#6F42C1]" />
+                  <span className="text-[8px] font-bold leading-none text-[#6F42C1]">Deskew</span>
+                </button>
+                <button onClick={() => rotateSourceImage(90)} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Rotate 90�">
+                  <RotateCw className="w-4 h-4 text-[#0D6EFD]" />
+                  <span className="text-[8px] font-bold leading-none text-[#0D6EFD]">Rotate</span>
+                </button>
+                <button onClick={() => alert('Flip horizontally')} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Flip Horizontal">
+                  <FlipHorizontal className="w-4 h-4 text-[#0D6EFD]" />
+                  <span className="text-[8px] font-bold leading-none text-[#0D6EFD]">Flip</span>
+                </button>
+                <div className="w-6 h-px bg-[#CBD5E1] shrink-0 my-0.5"></div>
+                <button onClick={() => alert("Brightness/Contrast filter")} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Brightness">
+                  <Sun className="w-4 h-4 text-[#EAB308]" />
+                  <span className="text-[8px] font-bold leading-none text-[#EAB308]">Bright</span>
+                </button>
+                <button onClick={() => alert("Brightness/Contrast filter")} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Contrast">
+                  <Contrast className="w-4 h-4 text-[#14B8A6]" />
+                  <span className="text-[8px] font-bold leading-none text-[#14B8A6]">Contr</span>
+                </button>
+                <button onClick={handleResetQuad} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#FFF4EC] hover:bg-[#FED7AA] text-[#EA580C] border border-[#FDBA74] cursor-pointer shadow-xs mt-auto" title="Reset Crop">
+                  <RefreshCw className="w-4 h-4" />
+                  <span className="text-[8px] font-bold leading-none">Reset</span>
+                </button>
+              </div>
+
+{/* Interactive Canvas Viewport */}
           <div className="flex-1 flex items-center justify-center overflow-hidden p-4 relative select-none">
             {isOfficeDocument && officeDocInfo ? (
               <div className="w-full h-full bg-[#FFFFFF] rounded-2xl border border-[#CBD5E1] shadow-md overflow-hidden flex flex-col">
@@ -2668,6 +2602,7 @@ export default function WhatsAppInboxPage() {
             </div>
           </div>
         </div>
+          </div>
 
         {/* ── RIGHT PANEL: LIVE OUTPUT PREVIEWS & TRAY (4 cols) ─────────────── */}
         <div className="col-span-12 md:col-span-4 bg-[#F8FAFC] p-3.5 flex flex-col justify-between overflow-y-auto space-y-3">
