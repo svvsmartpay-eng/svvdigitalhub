@@ -22,6 +22,7 @@ interface BranchItem {
   state?: string;
   pincode?: string;
   phone?: string;
+    email?: string;
   whatsappNumber?: string;
   managerName?: string;
   status?: string;
@@ -48,6 +49,7 @@ export default function BranchListPage() {
   const [formCity, setFormCity] = useState<string>('Hyderabad');
   const [formState, setFormState] = useState<string>('Telangana');
   const [formPhone, setFormPhone] = useState<string>('');
+  const [formEmail, setFormEmail] = useState<string>('');
   const [formWhatsApp, setFormWhatsApp] = useState<string>('');
   const [formManager, setFormManager] = useState<string>('');
   const [saving, setSaving] = useState<boolean>(false);
@@ -122,6 +124,7 @@ export default function BranchListPage() {
     setFormCity('Hyderabad');
     setFormState('Telangana');
     setFormPhone('');
+      setFormEmail('');
     setFormWhatsApp('');
     setFormManager('');
     setErrorMsg(null);
@@ -136,6 +139,7 @@ export default function BranchListPage() {
     setFormCity(b.city || 'Hyderabad');
     setFormState(b.state || 'Telangana');
     setFormPhone(b.phone || '');
+      setFormEmail(b.email || '');
     setFormWhatsApp(b.whatsappNumber || '');
     setFormManager(b.managerName || '');
     setErrorMsg(null);
@@ -164,6 +168,7 @@ export default function BranchListPage() {
       city: formCity.trim(),
       state: formState.trim(),
       phone: formPhone,
+        email: formEmail.trim() || undefined,
       isActive: true,
       updatedAt: now,
     };
@@ -204,6 +209,7 @@ export default function BranchListPage() {
           city: formCity.trim(),
           state: formState.trim(),
           phone: formPhone,
+          email: formEmail.trim() || undefined,
           status: 'ACTIVE',
           // Preserve existing sessionStatus — do NOT reset to OFFLINE on branch edit
           sessionStatus: editingBranch?.sessionStatus || 'OFFLINE',
