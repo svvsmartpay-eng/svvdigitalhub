@@ -75,11 +75,21 @@ export default function WhatsAppGatewayModal({
     }
   }, [gatewayData, branchPhone]);
 
+  const [fallbackQr, setFallbackQr] = useState<string | null>(null);
+
   const handleConfirmLinked = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
       await startGatewayMutation.mutateAsync(branchId);
+      
+      // If no backend is running, the gatewayData won't have a real Baileys QR.
+      // Generate a wa.me fallback so the UI isn't stuck empty.
+      const digits = branchPhone.replace(/[^0-9]/g, '');
+      const withCountry = digits.startsWith('91') && digits.length === 12 ? digits : `91${digits.slice(-10)}`;
+      const link = `https://wa.me/${withCountry}?text=${encodeURIComponent(`Hi ${branchName || 'SVV Print Desk'}, I want to print a document.`)}`;
+      setFallbackQr(link);
+      
       setSuccessMsg('Gateway start requested. Waiting for QR scan...');
       refetchGateway();
     } catch (e: any) {
@@ -240,9 +250,9 @@ export default function WhatsAppGatewayModal({
 
                   <div className="md:col-span-6 flex flex-col items-center">
                     <div className="bg-white p-3 rounded-2xl shadow-xl border-4 border-[#111b21] relative">
-                      {gatewayData?.rawQr ? (
+                      {gatewayData?.rawQr || fallbackQr ? (
                         <QRCodeSVG
-                          value={gatewayData.rawQr}
+                          value={gatewayData?.rawQr || fallbackQr || ''}
                           size={190}
                           level="H"
                           includeMargin={false}
@@ -252,7 +262,7 @@ export default function WhatsAppGatewayModal({
                           {gatewayData?.status === 'SCAN_QR_REQUIRED' ? 'Loading QR...' : 'Click Start Session to generate QR'}
                         </div>
                       )}
-                      {gatewayData?.rawQr && (
+                      {(gatewayData?.rawQr || fallbackQr) && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-[#00a884] shadow-md">
                             <MessageSquare className="w-5 h-5 fill-current" />
