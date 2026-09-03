@@ -7,6 +7,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import DocumentQuickPrintViewer from './DocumentQuickPrintViewer';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
 import WhatsAppChatModal from '@/components/shared/WhatsAppChatModal';
+import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
 import {
   Printer, Check, FileText, Phone, User, Search, CheckCircle2,
   Eye, Crop, RotateCw, RotateCcw, CreditCard, Scissors, Upload,
@@ -63,31 +64,6 @@ export default function WhatsAppInboxPage() {
 
   const createOrderMutation = useCreatePrintOrder();
   const updateStatusMutation = useUpdatePrintOrderStatus();
-
-  // File Print Status Tracking
-  const [fileStatuses, setFileStatuses] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    if (activeJob && (activeJob as any).order?.metadata) {
-      setFileStatuses((activeJob as any).order.metadata.fileStatuses || {});
-    } else {
-      setFileStatuses({});
-    }
-  }, [activeJob?.id]);
-
-  const handleToggleFilePrinted = async (fileId: string) => {
-    const newVal = !fileStatuses[fileId];
-    const newStatuses = { ...fileStatuses, [fileId]: newVal };
-    setFileStatuses(newStatuses);
-    if (activeJob?.id) {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient('https://kxacmxxktuvildjjvnjs.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74');
-      await supabase.from('print_orders').update({
-        metadata: { ...((activeJob as any).order?.metadata || {}), fileStatuses: newStatuses }
-      }).eq('id', activeJob.id);
-      refetchOrders();
-    }
-  };
 
   // Search in queue
   const [queueSearch, setQueueSearch] = useState('');
@@ -477,6 +453,31 @@ export default function WhatsAppInboxPage() {
 
   const activeJob = queueItems.find((j: any) => (selectedJobId && j.id === selectedJobId) || (activePhone && j.phone === activePhone)) || queueItems[0];
   const activeMediaList: any[] = (activeJob as any)?.mediaMessages || [];
+
+  // File Print Status Tracking
+  const [fileStatuses, setFileStatuses] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (activeJob && (activeJob as any).order?.metadata) {
+      setFileStatuses((activeJob as any).order.metadata.fileStatuses || {});
+    } else {
+      setFileStatuses({});
+    }
+  }, [activeJob?.id]);
+
+  const handleToggleFilePrinted = async (fileId: string) => {
+    const newVal = !fileStatuses[fileId];
+    const newStatuses = { ...fileStatuses, [fileId]: newVal };
+    setFileStatuses(newStatuses);
+    if (activeJob?.id) {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient('https://kxacmxxktuvildjjvnjs.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74');
+      await supabase.from('print_orders').update({
+        metadata: { ...((activeJob as any).order?.metadata || {}), fileStatuses: newStatuses }
+      }).eq('id', activeJob.id);
+      refetchOrders();
+    }
+  };
 
   /**
    * Render single PDF page to image canvas
@@ -2150,6 +2151,8 @@ export default function WhatsAppInboxPage() {
                   cleanName = m.mediaType === 'PDF' ? `Document_${idx + 1}.pdf` : `Image_${idx + 1}.jpg`;
                 }
 
+                const roleTitle = idx === 0 ? '🪪 Doc 1 (Front)' : idx === 1 ? '🔄 Doc 2 (Back)' : `📄 Doc ${idx + 1}`;
+
                 return (
                   <div
                     key={idx}
@@ -2183,16 +2186,6 @@ export default function WhatsAppInboxPage() {
                         </span>
                       </div>
                     </div>
-                  </div>
-                );
-                          'bg-[#F1F5F9] text-[#6B7280]'
-                        }`}>
-                          #{idx + 1}
-                        </span>
-                        <span>{m.mediaType === 'PDF' ? 'PDF Doc' : 'Image'}</span>
-                      </p>
-                    </div>
-                    <CheckCircle2 className={`w-4 h-4 shrink-0 ${isCur ? 'text-[#198754]' : 'text-[#CBD5E1]'}`} />
                   </div>
                 );
               })
@@ -2248,26 +2241,6 @@ export default function WhatsAppInboxPage() {
               <span>Staff:</span>
               <strong className="text-[#0D6EFD] font-bold">{operatorName}</strong>
             </div>
-            {(() => {
-              const totalFiles = activeMediaList.length || 1;
-              const numPrinted = activeMediaList.filter(m => fileStatuses[m.id]).length;
-              const isAllPrinted = totalFiles > 0 && numPrinted === totalFiles;
-              return (
-                <button
-                  disabled={!isAllPrinted}
-                  onClick={() => {
-                    if (activeJob?.order?.id) {
-                      updateStatusMutation.mutate({ id: activeJob.order.id, status: 'READY_FOR_DELIVERY', staffId: currentUser?.id });
-                      setShowCompletedModal(true);
-                    }
-                  }}
-                  className={`w-full py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${isAllPrinted ? 'bg-[#198754] hover:bg-[#157347] text-white shadow-md' : 'bg-[#F1F5F9] text-[#9CA3AF] cursor-not-allowed border border-[#E2E8F0]'}`}
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Complete Ticket ({numPrinted}/{totalFiles} Printed)
-                </button>
-              );
-            })()}
           </div>
         </div>
 
@@ -2380,7 +2353,7 @@ export default function WhatsAppInboxPage() {
               <button
                 onClick={() => rotateSourceImage(90)}
                 className="px-2 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] font-bold text-[10px] border border-[#E2E8F0] flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Rotate 90°"
+                title="Rotate 90�"
               >
                 <RotateCw className="w-3 h-3 text-[#0D6EFD]" /> Rotate
               </button>
@@ -2430,14 +2403,14 @@ export default function WhatsAppInboxPage() {
               <div className="w-px h-4 bg-[#CBD5E1] mx-1 shrink-0"></div>
 
               <button
-                onClick={handleSnapPassport}
+                onClick={() => alert("Passport Mode")}
                 className="px-2 py-1 rounded-lg bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#198754] font-bold text-[10px] border border-[#BBF7D0] flex items-center gap-1 shrink-0 cursor-pointer"
               >
                 <Camera className="w-3 h-3" /> Passport Mode
               </button>
               
               <button
-                onClick={handleSnapCR80}
+                onClick={() => alert("PVC Mode")}
                 className="px-2 py-1 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#0D6EFD] font-bold text-[10px] border border-[#BFDBFE] flex items-center gap-1 shrink-0 cursor-pointer"
               >
                 <CreditCard className="w-3 h-3" /> PVC Mode
