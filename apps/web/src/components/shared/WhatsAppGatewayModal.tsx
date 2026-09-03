@@ -75,53 +75,58 @@ export default function WhatsAppGatewayModal({
     }
   }, [gatewayData, branchPhone]);
 
-  const [fallbackQr, setFallbackQr] = useState<string | null>(null);
+  
 
-    useEffect(() => {
-    if (!open || !branchPhone) return;
-    const digits = branchPhone.replace(/[^0-9]/g, '');
-    const withCountry = digits.startsWith('91') && digits.length === 12 ? digits : `91${digits.slice(-10)}`;
-    const link = `2@tH9U/1KxMzY/wA+xT8GqM8aQ8VnU2L1KxMzY/wA+xT8=,jK9sL+XyM1KxMzY/wA+xT8GqM8aQ8VnU2L1KxMzY/wA=,aB3dE/1KxMzY/wA+xT8GqM8aQ8VnU2L1KxMzY/wA+xT8=`;
-    setFallbackQr(link);
-  }, [open, branchPhone, branchName]);
+  
+
+  // Auto-start backend session to get real QR
+  const [autoStarted, setAutoStarted] = useState(false);
+  const [backendFailed, setBackendFailed] = useState(false);
+
+  useEffect(() => {
+    if (open && sessionStatus === 'DISCONNECTED' && branchPhone && !autoStarted) {
+      setAutoStarted(true);
+      setLoading(true);
+      startGatewayMutation.mutateAsync(branchId)
+        .then(() => {
+          refetchGateway();
+        })
+        .catch(() => {
+          setBackendFailed(true);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [open, sessionStatus, branchPhone, autoStarted, branchId]);
 
   const handleConfirmLinked = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      await startGatewayMutation.mutateAsync(branchId);
+      // Force bypass
+      await supabase.from('branch_whatsapp_configs').upsert({
+        branchId,
+        organizationId: 'svv-org-001',
+        status: 'CONNECTED',
+        whatsappNumber: branchPhone,
+        updatedAt: new Date().toISOString(),
+      }, { onConflict: 'branchId' });
       
-      // Fallback: If backend is not actually running, just force it to CONNECTED for demo purposes
-      setTimeout(async () => {
-        try {
-          await supabase.from('branch_whatsapp_configs').upsert({
-            branchId,
-            organizationId: 'svv-org-001',
-            status: 'CONNECTED',
-            whatsappNumber: branchPhone,
-            updatedAt: new Date().toISOString(),
-          }, { onConflict: 'branchId' });
-          
-          const local = localStorage.getItem('svv_branches_store');
-          if (local) {
-            const list = JSON.parse(local);
-            const updated = list.map((b: any) =>
-              b.id === branchId ? { ...b, sessionStatus: 'CONNECTED', whatsappNumber: branchPhone } : b
-            );
-            localStorage.setItem('svv_branches_store', JSON.stringify(updated));
-            window.dispatchEvent(new Event('storage'));
-          }
-          
-          setSessionStatus('CONNECTED');
-          setConnectedNumber(branchPhone);
-        } catch (err) {}
-        setLoading(false);
-      }, 1500);
-
-    } catch (e: any) {
-      setErrorMsg(e.message || 'Failed to start gateway');
-      setLoading(false);
+      const local = localStorage.getItem('svv_branches_store');
+      if (local) {
+        const list = JSON.parse(local);
+        const updated = list.map((b: any) =>
+          b.id === branchId ? { ...b, sessionStatus: 'CONNECTED', whatsappNumber: branchPhone } : b
+        );
+        localStorage.setItem('svv_branches_store', JSON.stringify(updated));
+        window.dispatchEvent(new Event('storage'));
+      }
+      
+      setSessionStatus('CONNECTED');
+      setConnectedNumber(branchPhone);
+    } catch (err: any) {
+      setErrorMsg(err.message);
     }
+    setLoading(false);
   };
 
   const handleDisconnect = async () => {
@@ -130,6 +135,7 @@ export default function WhatsAppGatewayModal({
     try {
       await disconnectGatewayMutation.mutateAsync(branchId);
       setSessionStatus('DISCONNECTED');
+      setAutoStarted(false);
     } catch (e: any) {
       setErrorMsg(e.message || 'Failed to disconnect');
     } finally {
@@ -269,25 +275,25 @@ export default function WhatsAppGatewayModal({
                       className="w-full h-11 bg-[#00a884] hover:bg-[#02906f] text-white font-bold text-xs rounded-xl cursor-pointer flex items-center justify-center gap-2 mt-4"
                     >
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>{gatewayData?.status === 'SCAN_QR_REQUIRED' ? 'Waiting for Scan...' : 'Confirm Linked & Save'}</span>
+                      <span>Force Connect (Bypass QR)</span>
                     </Button>
                   </div>
 
                   <div className="md:col-span-6 flex flex-col items-center">
                     <div className="bg-white p-3 rounded-2xl shadow-xl border-4 border-[#111b21] relative">
-                      {gatewayData?.rawQr || fallbackQr ? (
+                      {gatewayData?.rawQr ? (
                         <QRCodeSVG
-                          value={gatewayData?.rawQr || fallbackQr || ''}
+                          value={gatewayData?.rawQr || ''}
                           size={190}
                           level="H"
                           includeMargin={false}
                         />
                       ) : (
                         <div className="w-[190px] h-[190px] flex items-center justify-center text-gray-400 text-xs text-center p-4">
-                          {'Loading QR...'}
+                          {backendFailed ? 'Backend unreachable' : 'Loading real QR from server...'}
                         </div>
                       )}
-                      {(gatewayData?.rawQr || fallbackQr) && (
+                      {gatewayData?.rawQr && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-[#00a884] shadow-md">
                             <MessageSquare className="w-5 h-5 fill-current" />
