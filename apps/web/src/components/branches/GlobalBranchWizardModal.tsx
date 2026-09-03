@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useBranchWizardStore } from '@/store/branchWizardStore';
 import { supabase } from '@/lib/supabase';
+import { apiClient } from '@/lib/api';
 import { X, CheckCircle2, ChevronRight, ChevronLeft, Building2, MessageSquare, Wrench } from 'lucide-react';
 
 export default function GlobalBranchWizardModal() {
@@ -16,8 +17,9 @@ export default function GlobalBranchWizardModal() {
   const [formAddress, setFormAddress] = useState('');
   const [formCity, setFormCity] = useState('');
   const [formState, setFormState] = useState('');
-  const [formPhone, setFormPhone] = useState('');
-  const [formManager, setFormManager] = useState('');
+  const [formPhone, setFormPhone] = useState(''); // Maps to mobile_no / phone
+  const [formEmail, setFormEmail] = useState('');
+  const [formManager, setFormManager] = useState(''); // Maps to manager_name / managerId
 
   // Tab 2: WhatsApp & Print Hub
   const [waNumber, setWaNumber] = useState('');
@@ -39,6 +41,7 @@ export default function GlobalBranchWizardModal() {
         setFormCity('');
         setFormState('');
         setFormPhone('');
+        setFormEmail('');
         setFormManager('');
         setWaNumber('');
         setWaDisplayName('');
@@ -47,6 +50,59 @@ export default function GlobalBranchWizardModal() {
         setModulePrintHub(true);
         setModuleAssets(true);
         setModuleTasks(true);
+        setActiveTab(0);
+        setErrorMsg(null);
+      } else {
+        // Fetch existing branch data to edit
+        const loadBranch = async () => {
+          try {
+            // Read from localStorage cache first for instant UI
+            const local = localStorage.getItem('svv_branches_store');
+            let branchData = null;
+            if (local) {
+              const list = JSON.parse(local);
+              branchData = list.find((b: any) => b.id === editingBranchId);
+            }
+            
+            // If we have local data, populate immediately
+            if (branchData) {
+              setFormName(branchData.name || '');
+              setFormCode(branchData.code || '');
+              setFormAddress(branchData.address || '');
+              setFormCity(branchData.city || '');
+              setFormState(branchData.state || '');
+              setFormPhone(branchData.phone || '');
+              setFormEmail(branchData.email || '');
+              setFormManager(branchData.managerId || branchData.managerName || '');
+              
+              setWaNumber(branchData.whatsappNumber || '');
+            }
+
+            // Also query Supabase to get the exact latest and the WhatsApp config
+            const { data: bData } = await supabase.from('branches').select('*').eq('id', editingBranchId).single();
+            if (bData) {
+              setFormName(bData.name || '');
+              setFormCode(bData.code || '');
+              setFormAddress(bData.address || '');
+              setFormCity(bData.city || '');
+              setFormState(bData.state || '');
+              setFormPhone(bData.phone || '');
+              setFormEmail(bData.email || '');
+              setFormManager(bData.managerId || '');
+            }
+
+            const { data: waData } = await supabase.from('branch_whatsapp_configs').select('*').eq('branchId', editingBranchId).single();
+            if (waData) {
+              setWaNumber(waData.whatsappNumber || '');
+              setWaDisplayName(waData.displayName || '');
+              setWaWelcomeMessage(waData.welcomeMessage || 'Welcome to SVV Print Hub! Send your files to print.');
+              setWaAutoPrint(waData.autoPrint || false);
+            }
+          } catch (err) {
+            console.error("Error loading branch details", err);
+          }
+        };
+        loadBranch();
         setActiveTab(0);
         setErrorMsg(null);
       }
@@ -77,15 +133,19 @@ export default function GlobalBranchWizardModal() {
         address: formAddress.trim(),
         city: formCity.trim(),
         state: formState.trim(),
-        phone: formPhone,
+        phone: formPhone.trim(),
+        email: formEmail.trim(),
+        managerId: formManager.trim(),
         isActive: true,
         updatedAt: now,
       };
       if (!editingBranchId) branchPayload.createdAt = now;
 
+      // 1. Update Supabase branches table
       const { error: branchError } = await supabase.from('branches').upsert(branchPayload, { onConflict: 'id' });
       if (branchError) throw new Error(branchError.message || 'Error saving branch');
 
+      // 2. Update Supabase WhatsApp config
       if (waNumber.trim()) {
         const { error: waError } = await supabase.from('branch_whatsapp_configs').upsert({
           branchId,
@@ -99,20 +159,42 @@ export default function GlobalBranchWizardModal() {
         }, { onConflict: 'branchId' });
         if (waError) throw new Error(waError.message || 'Error saving WhatsApp config');
       }
-      
+
+      // 3. Fallback to API if deployed (best effort sync)
+      try {
+        if (editingBranchId) {
+          await apiClient.put(`/branches/${branchId}`, branchPayload);
+        } else {
+          await apiClient.post('/branches', branchPayload);
+        }
+      } catch {}
+
+      // 4. Update Local Storage for Instant UI feedback
       try {
         const local = localStorage.getItem('svv_branches_store');
         let prev = local ? JSON.parse(local) : [];
-        const item = { ...branchPayload, managerName: formManager, assetsCount: 0, ordersCount: 0 };
+        const item = { 
+          ...branchPayload, 
+          managerName: formManager.trim(), 
+          whatsappNumber: waNumber.trim(),
+          assetsCount: 0, 
+          ordersCount: 0 
+        };
         const exists = prev.some((b: any) => b.id === branchId);
-        const updated = exists ? prev.map((b: any) => b.id === branchId ? item : b) : [...prev, item];
+        
+        // When mapping, preserve counts if it exists
+        const updated = exists ? prev.map((b: any) => b.id === branchId ? { ...b, ...item, assetsCount: b.assetsCount, ordersCount: b.ordersCount, staffCount: b.staffCount } : b) : [...prev, item];
         localStorage.setItem('svv_branches_store', JSON.stringify(updated));
+        
+        // Dispatch storage event so BranchListPage updates instantly
         window.dispatchEvent(new Event('storage'));
-      } catch {}
+      } catch (err) {
+        console.error('Local storage update failed', err);
+      }
 
       closeWizard();
     } catch (err: any) {
-      setErrorMsg(`Provisioning Failed: ${err.message}`);
+      setErrorMsg(`Failed to save branch: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -121,12 +203,12 @@ export default function GlobalBranchWizardModal() {
   const tabs = [
     { id: 0, title: 'Basic Info', icon: <Building2 className="w-4 h-4" /> },
     { id: 1, title: 'WhatsApp & Print Hub', icon: <MessageSquare className="w-4 h-4" /> },
-    { id: 2, title: 'Modules & Settings', icon: <Wrench className="w-4 h-4" /> }
+    { id: 2, title: 'Modules & Features', icon: <Wrench className="w-4 h-4" /> },
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="bg-[#081B3A] px-6 py-4 flex items-center justify-between text-white shrink-0">
@@ -135,7 +217,7 @@ export default function GlobalBranchWizardModal() {
               <Building2 className="w-5 h-5 text-blue-400" />
               {editingBranchId ? 'Edit Branch Configurations' : 'New Branch Setup Wizard'}
             </h2>
-            <p className="text-xs text-blue-200 mt-0.5">Provision a new branch center and configure all integrated modules.</p>
+            <p className="text-xs text-blue-200 mt-0.5">Provision a branch center and configure integrated modules.</p>
           </div>
           <button onClick={closeWizard} className="text-gray-300 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors">
             <X className="w-5 h-5" />
@@ -160,21 +242,19 @@ export default function GlobalBranchWizardModal() {
           ))}
         </div>
 
-        {/* Error Message */}
-        {errorMsg && (
-          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-bold flex items-start justify-between">
-            <span>{errorMsg}</span>
-            <button onClick={() => setErrorMsg(null)}><X className="w-4 h-4" /></button>
-          </div>
-        )}
+        {/* Form Content */}
+        <div className="p-6 overflow-y-auto flex-1 bg-white">
+          {errorMsg && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-bold">
+              {errorMsg}
+            </div>
+          )}
 
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto p-6 bg-white">
           {activeTab === 0 && (
             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="col-span-2">
-                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Branch Name *</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Branch Name (branch_name) *</label>
                   <input
                     type="text"
                     value={formName}
@@ -185,7 +265,7 @@ export default function GlobalBranchWizardModal() {
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Code *</label>
+                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Branch Code *</label>
                   <input
                     type="text"
                     value={formCode}
@@ -210,6 +290,29 @@ export default function GlobalBranchWizardModal() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
+                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Mobile Number (mobile_no)</label>
+                  <input
+                    type="text"
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value)}
+                    placeholder="+91..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Email Address (email)</label>
+                  <input
+                    type="email"
+                    value={formEmail}
+                    onChange={(e) => setFormEmail(e.target.value)}
+                    placeholder="branch@svvams.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
                   <label className="font-bold text-gray-700 block mb-1.5 text-xs">City</label>
                   <input
                     type="text"
@@ -219,33 +322,12 @@ export default function GlobalBranchWizardModal() {
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">State</label>
-                  <input
-                    type="text"
-                    value={formState}
-                    onChange={(e) => setFormState(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Branch Manager</label>
+                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Manager Name (manager_name)</label>
                   <input
                     type="text"
                     value={formManager}
                     onChange={(e) => setFormManager(e.target.value)}
                     placeholder="Manager Name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="font-bold text-gray-700 block mb-1.5 text-xs">Contact Phone</label>
-                  <input
-                    type="text"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-600 text-sm"
                   />
                 </div>
@@ -262,7 +344,7 @@ export default function GlobalBranchWizardModal() {
               </div>
 
               <div>
-                <label className="font-bold text-gray-700 block mb-1.5 text-xs">Dedicated WhatsApp Business Number</label>
+                <label className="font-bold text-gray-700 block mb-1.5 text-xs">Dedicated WhatsApp Number (whatsapp_number)</label>
                 <input
                   type="text"
                   value={waNumber}
@@ -362,7 +444,7 @@ export default function GlobalBranchWizardModal() {
               disabled={saving}
               className="px-6 py-2 bg-[#198754] hover:bg-[#157347] text-white rounded-xl text-sm font-bold shadow-sm flex items-center gap-1 transition-colors disabled:opacity-50"
             >
-              {saving ? 'Provisioning...' : 'Save & Provision Branch'}
+              {saving ? 'Saving...' : 'Save Branch Details'}
               {!saving && <CheckCircle2 className="w-4 h-4 ml-1" />}
             </button>
           )}
