@@ -669,17 +669,33 @@ export default function WhatsAppInboxPage() {
 
     // ── 2. REAL PDF DOCUMENTS ────────────────────────────────────────────────
     if (isPdf) {
-      setIsPdfDocument(true);
       setPrintMode('A4_FULL_PAGE');
       setCustomPrice(10);
       setA4LayoutStyle('AUTO_FIT');
       setA4ScalePercent(100);
-      setActiveCropBox({ x: 0, y: 0, w: 100, h: 100 });
-      setActiveQuad({ tl: { x: 0, y: 0 }, tr: { x: 100, y: 0 }, br: { x: 100, y: 100 }, bl: { x: 0, y: 100 } });
       setCurrentPdfPage(1);
       setPdfPageCount(1);
       setSelectedPdfPages([1]);
-      setDocumentImageSrc(primaryUrl);
+
+      if (isDataUrl) {
+        // PDF as base64 data URL — <img> cannot render PDF; route via WordDocumentViewer (iframe blob)
+        setIsPdfDocument(false);
+        setIsOfficeDocument(true);
+        setDocumentImageSrc('');
+        setLoadedSourceImage(null);
+        const docName = directBackendUrl.split('/').pop() || 'Document.pdf';
+        setOfficeDocInfo({
+          name: docName.includes('.') ? docName : 'Document.pdf',
+          url: primaryUrl, // pass data URL directly — WordDocumentViewer handles it
+          type: 'PDF Document (.pdf)',
+        });
+      } else {
+        // Regular file URL — set as documentImageSrc for canvas/img rendering
+        setIsPdfDocument(true);
+        setActiveCropBox({ x: 0, y: 0, w: 100, h: 100 });
+        setActiveQuad({ tl: { x: 0, y: 0 }, tr: { x: 100, y: 0 }, br: { x: 100, y: 100 }, bl: { x: 0, y: 100 } });
+        setDocumentImageSrc(primaryUrl);
+      }
       setIsFileLoading(false);
     } else {
       // ── 3. REAL IMAGE FILES (JPG, PNG, WEBP) ───────────────────────────────
@@ -717,8 +733,10 @@ export default function WhatsAppInboxPage() {
       setSelectedDocMsg(currentDoc);
 
       if (currentDoc?.mediaUrl) {
-        const isPdf = currentDoc.mediaType === 'PDF' || currentDoc.mediaUrl.toLowerCase().endsWith('.pdf');
-        loadSourceFile(currentDoc.mediaUrl, isPdf);
+        const mUrl = currentDoc.mediaUrl;
+        const dataMimeIsPdf = mUrl.startsWith('data:') && mUrl.startsWith('data:application/pdf');
+        const isPdf = currentDoc.mediaType === 'PDF' || mUrl.toLowerCase().endsWith('.pdf') || dataMimeIsPdf;
+        loadSourceFile(mUrl, isPdf);
       } else {
         setDocumentImageSrc('');
         setLoadedSourceImage(null);
