@@ -7,7 +7,6 @@ const {
   DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  makeInMemoryStore,
   downloadMediaMessage,
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
@@ -404,6 +403,8 @@ async function connectBranch(branchId) {
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
 
+  const messageCache = new Map();
+
   const sock = makeWASocket({
     version,
     logger: pino({ level: 'silent' }),
@@ -411,6 +412,13 @@ async function connectBranch(branchId) {
     printQRInTerminal: false,
     generateHighQualityLinkPreview: false,
     browser: ['SVV AMS', 'Chrome', '120.0.0'],
+    getMessage: async (key) => {
+      return messageCache.get(key.id) || undefined;
+    },
+    syncFullHistory: false,
+    defaultQueryTimeoutMs: 60000,
+    retryRequestDelayMs: 250,
+    maxMsgRetryCount: 5,
   });
 
   const session = { sock, qrCode: null, qrBase64: null, status: 'QR_PENDING' };
@@ -460,6 +468,9 @@ async function connectBranch(branchId) {
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
     for (const msg of messages) {
+      if (msg.key?.id && msg.message) {
+        messageCache.set(msg.key.id, msg.message);
+      }
       if (msg.key.fromMe) continue; // Skip our own messages
       if (msg.key.remoteJid && msg.key.remoteJid.endsWith('@g.us')) continue; // Skip group messages
       console.log(`📥 Upsert message received from ${msg.key.remoteJid}`);
