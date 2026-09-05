@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
+import { useFilterStore } from '@/stores/filter.store';
 import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
 export function useDashboard(params?: any) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({ 
-    queryKey: ['dashboard', params], 
+    queryKey: ['dashboard', params, selectedBranches], 
     queryFn: async () => { 
       try {
         const r = await apiClient.get('/dashboard', { params });
@@ -13,6 +15,7 @@ export function useDashboard(params?: any) {
 
       // Fallback: Calculate metrics directly from Supabase for Vercel Serverless environment
       const branchFilter = params?.branchId;
+      const sb = selectedBranches;
       
       const [
         { count: totalAssets },
@@ -22,12 +25,14 @@ export function useDashboard(params?: any) {
         { count: criticalIssues },
         { count: inProgressVisits }
       ] = await Promise.all([
-        supabase.from('assets').select('*', { count: 'exact', head: true }).in('status', ['OPERATIONAL', 'BREAKDOWN', 'MAINTENANCE', 'DECOMMISSIONED']),
-        supabase.from('assets').select('*', { count: 'exact', head: true }).eq('status', 'OPERATIONAL'),
-        supabase.from('assets').select('*', { count: 'exact', head: true }).eq('status', 'BREAKDOWN'),
-        supabase.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'OPEN'),
-        supabase.from('issues').select('*', { count: 'exact', head: true }).eq('priority', 'CRITICAL').neq('status', 'RESOLVED'),
-        supabase.from('service_visits').select('*', { count: 'exact', head: true }).eq('status', 'IN_PROGRESS'),
+        
+(sb.length > 0 ? supabase.from('assets').select('*', { count: 'exact', head: true }).in('status', ['OPERATIONAL', 'BREAKDOWN', 'MAINTENANCE', 'DECOMMISSIONED']).in('branchId', sb) : supabase.from('assets').select('*', { count: 'exact', head: true }).in('status', ['OPERATIONAL', 'BREAKDOWN', 'MAINTENANCE', 'DECOMMISSIONED'])),
+
+        (sb.length > 0 ? supabase.from('assets').select('*', { count: 'exact', head: true }).eq('status', 'OPERATIONAL').in('branchId', sb) : supabase.from('assets').select('*', { count: 'exact', head: true }).eq('status', 'OPERATIONAL')),
+        (sb.length > 0 ? supabase.from('assets').select('*', { count: 'exact', head: true }).eq('status', 'BREAKDOWN').in('branchId', sb) : supabase.from('assets').select('*', { count: 'exact', head: true }).eq('status', 'BREAKDOWN')),
+        (sb.length > 0 ? supabase.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'OPEN').in('branchId', sb) : supabase.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'OPEN')),
+        (sb.length > 0 ? supabase.from('issues').select('*', { count: 'exact', head: true }).eq('priority', 'CRITICAL').neq('status', 'RESOLVED').in('branchId', sb) : supabase.from('issues').select('*', { count: 'exact', head: true }).eq('priority', 'CRITICAL').neq('status', 'RESOLVED')),
+        (sb.length > 0 ? supabase.from('service_visits').select('*', { count: 'exact', head: true }).eq('status', 'IN_PROGRESS').in('branchId', sb) : supabase.from('service_visits').select('*', { count: 'exact', head: true }).eq('status', 'IN_PROGRESS')),
       ]);
 
       return {

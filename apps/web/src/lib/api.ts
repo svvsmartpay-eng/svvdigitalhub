@@ -58,9 +58,8 @@ apiClient.interceptors.response.use(
       const { refreshToken, setAuth, logout, user } = useAuthStore.getState();
 
       if (!refreshToken) {
-        // No refresh token — force logout
+        // Clear token if invalid, do not hard reload window to avoid blinking
         logout();
-        window.location.href = '/login';
         return Promise.reject(error);
       }
 
@@ -82,7 +81,6 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         processPendingQueue(refreshError, null);
         logout();
-        window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

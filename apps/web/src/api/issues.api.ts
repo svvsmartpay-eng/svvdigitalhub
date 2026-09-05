@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useFilterStore } from '@/stores/filter.store';
 import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
 export function useIssues(params?: any) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({
-    queryKey: ['issues', params],
+    queryKey: ['issues', params, selectedBranches],
     queryFn: async () => {
       try {
         const r = await apiClient.get('/issues', { params });
@@ -12,10 +14,9 @@ export function useIssues(params?: any) {
       } catch {}
 
       try {
-        const { data: supaIssues, error } = await supabase
-          .from('issues')
-          .select('*, branch:branches(name, code), asset:assets(name, assetId)')
-          .order('createdAt', { ascending: false });
+        let query = supabase.from('issues').select('*, branch:branches(name, code), asset:assets(name, assetId)').order('createdAt', { ascending: false });
+        if (selectedBranches.length > 0) query = query.in('branchId', selectedBranches);
+        const { data: supaIssues, error } = await query;
 
         if (!error && supaIssues) return supaIssues;
       } catch {}
@@ -51,8 +52,9 @@ export function useIssue(id: string) {
 }
 
 export function useIssueStats(branchId?: string) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({
-    queryKey: ['issue-stats', branchId],
+    queryKey: ['issue-stats', branchId, selectedBranches],
     queryFn: async () => {
       try {
         const r = await apiClient.get('/issues/stats', { params: { branchId } });
@@ -60,7 +62,9 @@ export function useIssueStats(branchId?: string) {
       } catch {}
 
       try {
-        const { data: supaIssues } = await supabase.from('issues').select('status, priority');
+        let query = supabase.from('issues').select('status, priority');
+        if (selectedBranches.length > 0) query = query.in('branchId', selectedBranches);
+        const { data: supaIssues } = await query;
         const list = supaIssues || [];
         return {
           total: list.length,

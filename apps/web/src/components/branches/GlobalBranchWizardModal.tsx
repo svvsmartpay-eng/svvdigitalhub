@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useBranchWizardStore } from '@/store/branchWizardStore';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { apiClient } from '@/lib/api';
 import { X, CheckCircle2, ChevronRight, ChevronLeft, Building2, MessageSquare, Wrench } from 'lucide-react';
 
 export default function GlobalBranchWizardModal() {
+  const queryClient = useQueryClient();
   const { isOpen, editingBranchId, closeWizard } = useBranchWizardStore();
   
   const [activeTab, setActiveTab] = useState(0);

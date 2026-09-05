@@ -27,7 +27,7 @@ export function useLogin() {
             role: role,
             roles: [role],
             branches: ['branch-1'],
-            organizationId: 'org-1',
+            organizationId: 'svv-org-001',
           },
           accessToken: 'svv-demo-access-token-2026',
           refreshToken: 'svv-demo-refresh-token-2026',
@@ -76,7 +76,7 @@ export function useCurrentUser() {
           role: 'SUPER_ADMIN',
           roles: ['SUPER_ADMIN'],
           branches: ['branch-1'],
-          organizationId: 'org-1',
+          organizationId: 'svv-org-001',
         };
       }
     },

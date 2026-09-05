@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useWhatsAppInbox, useCreatePrintOrder, useUpdatePrintOrderStatus, usePrintOrders, usePrintHubRealtimeSync } from '@/api/printHub.api';
+import { useWhatsAppInbox, useCreatePrintOrder, useUpdatePrintOrderStatus, usePrintOrders, usePrintHubRealtimeSync, useStartTicketWork } from '@/api/printHub.api';
 import { useBranches } from '@/api/branches.api';
 import { useCurrentUser } from '@/api/auth.api';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,9 @@ import DocumentQuickPrintViewer from './DocumentQuickPrintViewer';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
 import WhatsAppChatModal from '@/components/shared/WhatsAppChatModal';
 import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
+import ServiceSelectionModal from '@/components/shared/ServiceSelectionModal';
+import OutputJobsTracker from '@/components/shared/OutputJobsTracker';
+import { CropStudioModal, CropResult } from '@/components/shared/CropStudioModal';
 import {
   Printer, Check, FileText, Phone, User, Search, CheckCircle2,
   Eye, Crop, RotateCw, RotateCcw, CreditCard, Scissors, Upload,
@@ -64,15 +67,28 @@ export default function WhatsAppInboxPage() {
 
   const createOrderMutation = useCreatePrintOrder();
   const updateStatusMutation = useUpdatePrintOrderStatus();
+  const startTicketWorkMutation = useStartTicketWork();
+
+  // Step 3 Service Selection Modal State
+  const [showServiceModal, setShowServiceModal] = useState<boolean>(false);
 
   // Search in queue
   const [queueSearch, setQueueSearch] = useState('');
 
   // Active Selected Chat & Document State
-  const [activePhone, setActivePhone] = useState<string>('');
-  const [selectedJobId, setSelectedJobId] = useState<string>('');
+  const searchParams = new URLSearchParams(window.location.search);
+  const initialOrderId = searchParams.get('orderId') || '';
+  const initialToken = searchParams.get('token') || '';
+  const initialPhone = searchParams.get('phone') || '';
+
+  const [activePhone, setActivePhone] = useState<string>(initialPhone);
+  const [selectedJobId, setSelectedJobId] = useState<string>(initialOrderId);
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number>(0);
   const [selectedDocMsg, setSelectedDocMsg] = useState<any | null>(null);
+
+  // Tracks previous doc count per job so new arrivals auto-select the latest doc + play chime
+  const prevDocsLengthRef = useRef<Record<string, number>>({});
+  const prevQueueLengthRef = useRef<number>(0);
 
   // ── Print Mode Selection (PVC Card vs A4 Full Page vs Passport Photos) ───────
   const [printMode, setPrintMode] = useState<PrintMode>('PVC_CARD');
@@ -282,36 +298,69 @@ export default function WhatsAppInboxPage() {
       const mediaItems: any[] = [];
       const seenUrls = new Set<string>();
 
+      // Helper to detect mediaType from url + name + type hint
+      const detectMediaType = (url: string, name?: string, typeHint?: string): string => {
+        if (typeHint === 'EXCEL') return 'EXCEL';
+        if (typeHint === 'DOC') return 'DOC';
+        if (typeHint === 'PDF') return 'PDF';
+        if (typeHint === 'IMAGE') return 'IMAGE';
+        const lUrl = (url || '').toLowerCase();
+        const lName = (name || '').toLowerCase();
+        if (lUrl.endsWith('.pdf') || lName.endsWith('.pdf')) return 'PDF';
+        if (lUrl.endsWith('.xlsx') || lUrl.endsWith('.xls') || lUrl.endsWith('.csv') ||
+            lName.endsWith('.xlsx') || lName.endsWith('.xls') || lName.endsWith('.csv')) return 'EXCEL';
+        if (lUrl.endsWith('.docx') || lUrl.endsWith('.doc') || lUrl.endsWith('.rtf') ||
+            lName.endsWith('.docx') || lName.endsWith('.doc') || lName.endsWith('.rtf')) return 'DOC';
+        return 'IMAGE';
+      };
+
       // Primary document
       if (ord.documentUrl) {
-        const isPdf = ord.documentUrl.toLowerCase().includes('.pdf') || (ord.documentName && ord.documentName.toLowerCase().endsWith('.pdf'));
-        const isDocx = ord.documentUrl.toLowerCase().includes('.docx') || (ord.documentName && ord.documentName.toLowerCase().endsWith('.docx'));
-
+        const mType = detectMediaType(ord.documentUrl, ord.documentName);
         mediaItems.push({
           id: `ord-doc-${ord.id}-0`,
           phone: ord.customerPhone,
           mediaUrl: ord.documentUrl,
-          mediaType: isPdf ? 'PDF' : isDocx ? 'DOC' : 'IMAGE',
-          messageBody: ord.documentName || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
+          mediaType: mType,
+          messageBody: ord.documentName || (mType === 'PDF' ? 'Document.pdf' : 'Photo.jpg'),
           createdAt: ord.createdAt,
           tokenNumber: ord.tokenNumber,
         });
         seenUrls.add(ord.documentUrl);
       }
 
+      // Include all documents from input_documents JSON array (e.g. when customer sends multiple documents to same ticket)
+      if (Array.isArray(ord.input_documents)) {
+        ord.input_documents.forEach((doc: any, docIdx: number) => {
+          const docUrl = doc.url || doc.documentUrl;
+          if (docUrl && !seenUrls.has(docUrl)) {
+            seenUrls.add(docUrl);
+            const docName = doc.name || doc.fileName || doc.documentName || `Document-${docIdx + 1}`;
+            const mType = detectMediaType(docUrl, docName, doc.type);
+            mediaItems.push({
+              id: doc.id || `input-doc-${ord.id}-${docIdx}`,
+              phone: ord.customerPhone,
+              mediaUrl: docUrl,
+              mediaType: mType,
+              messageBody: docName,
+              createdAt: doc.receivedAt || ord.createdAt,
+              tokenNumber: ord.tokenNumber,
+            });
+          }
+        });
+      }
+
       // Add extra media messages explicitly belonging to this order
       matchingMessages.filter((m: any) => m.mediaUrl).forEach((m: any, idx: number) => {
         if (!seenUrls.has(m.mediaUrl)) {
           seenUrls.add(m.mediaUrl);
-          const isPdf = m.mediaUrl.toLowerCase().includes('.pdf') || m.mediaType === 'PDF';
-          const isDocx = m.mediaUrl.toLowerCase().includes('.docx') || m.mediaType === 'DOC';
-
+          const mType = detectMediaType(m.mediaUrl, m.fileName || m.messageBody, m.mediaType);
           mediaItems.push({
             id: `msg-${m.id || idx}`,
             phone: m.phone,
             mediaUrl: m.mediaUrl,
-            mediaType: isPdf ? 'PDF' : isDocx ? 'DOC' : 'IMAGE',
-            messageBody: m.fileName || m.messageBody || (isPdf ? 'Document.pdf' : 'Photo.jpg'),
+            mediaType: mType,
+            messageBody: m.fileName || m.messageBody || (mType === 'PDF' ? 'Document.pdf' : 'Photo.jpg'),
             createdAt: m.createdAt,
             tokenNumber: ord.tokenNumber,
           });
@@ -429,12 +478,29 @@ export default function WhatsAppInboxPage() {
       return (b.rawDate?.getTime() || 0) - (a.rawDate?.getTime() || 0);
     });
 
-    if (!selectedJobId && list.length > 0) {
-      setSelectedJobId(list[0].id);
-      setActivePhone(list[0].phone);
+    if (list.length > 0) {
+      if (initialOrderId || initialToken || initialPhone) {
+        const matched = list.find((item: any) =>
+          (initialOrderId && item.id === initialOrderId) ||
+          (initialToken && (item.tokenNumber === initialToken || item.order?.tokenNumber === initialToken)) ||
+          (initialPhone && item.phone && item.phone.replace(/\D/g, '').endsWith(initialPhone.replace(/\D/g, '').slice(-10)))
+        );
+        if (matched) {
+          if (selectedJobId !== matched.id) {
+            setSelectedJobId(matched.id);
+            setActivePhone(matched.phone);
+          }
+        } else if (!selectedJobId) {
+          setSelectedJobId(list[0].id);
+          setActivePhone(list[0].phone);
+        }
+      } else if (!selectedJobId) {
+        setSelectedJobId(list[0].id);
+        setActivePhone(list[0].phone);
+      }
     }
     return list;
-  }, [messages, ordersResponse, selectedJobId, operatorName]);
+  }, [messages, ordersResponse, selectedJobId, operatorName, initialOrderId, initialToken, initialPhone]);
 
   const filteredQueue = queueItems.filter(q => {
     const matchesSearch =
@@ -557,17 +623,25 @@ export default function WhatsAppInboxPage() {
     setIsFileLoading(true);
     setFileLoadError(null);
 
-    const cleanRelUrl = url.startsWith('http')
+    const isDataUrl = url.startsWith('data:');
+    const cleanRelUrl = url.startsWith('http') || isDataUrl
       ? url.replace(/^http:\/\/[^/]+/, '')
       : (url.startsWith('/') ? url : `/${url}`);
-    const directBackendUrl = url.startsWith('http') ? url : `http://localhost:4000${cleanRelUrl}`;
-    const primaryUrl = directBackendUrl;
-    
-    const isWord = url.toLowerCase().endsWith('.doc') || url.toLowerCase().endsWith('.docx') || url.toLowerCase().endsWith('.rtf') || url.toLowerCase().endsWith('.odt');
-    const isExcel = url.toLowerCase().endsWith('.xls') || url.toLowerCase().endsWith('.xlsx') || url.toLowerCase().endsWith('.csv');
+    const directBackendUrl = (url.startsWith('http') || isDataUrl) ? url : `http://localhost:4000${cleanRelUrl}`;
+    const primaryUrl = url;
+
+    // Detect type from data: URL MIME prefix when the URL has no file extension
+    const dataMime = isDataUrl ? url.slice(5, url.indexOf(';')) : '';
+    const isWord = url.toLowerCase().endsWith('.doc') || url.toLowerCase().endsWith('.docx') || url.toLowerCase().endsWith('.rtf') || url.toLowerCase().endsWith('.odt')
+      || dataMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || dataMime === 'application/msword';
+    const isExcel = url.toLowerCase().endsWith('.xls') || url.toLowerCase().endsWith('.xlsx') || url.toLowerCase().endsWith('.csv')
+      || dataMime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      || dataMime === 'application/vnd.ms-excel'
+      || dataMime === 'text/csv';
     const isText = url.toLowerCase().endsWith('.txt');
     const isOffice = isWord || isExcel || isText;
-    const isPdf = isPdfHint || url.toLowerCase().endsWith('.pdf');
+    const isPdf = isPdfHint || url.toLowerCase().endsWith('.pdf') || dataMime === 'application/pdf';
 
     // ── 1. REAL OFFICE DOCUMENTS (DOCX, XLSX, TXT) ───────────────────────────
     if (isOffice) {
@@ -577,8 +651,12 @@ export default function WhatsAppInboxPage() {
       setPdfPagesList([]);
       setDocumentImageSrc('');
       setLoadedSourceImage(null);
+      // Extract a display name from data URL encoded fileName or fallback
+      const displayName = isDataUrl
+        ? (isExcel ? 'Spreadsheet.xlsx' : isWord ? 'Document.docx' : 'TextFile.txt')
+        : (cleanRelUrl.split('/').pop() || 'Document.docx');
       setOfficeDocInfo({
-        name: cleanRelUrl.split('/').pop() || 'Document.docx',
+        name: displayName,
         url: directBackendUrl,
         type: isWord ? 'Microsoft Word Document (.docx)' : isExcel ? 'Excel Spreadsheet (.xlsx)' : 'Text Document (.txt)',
       });
@@ -608,7 +686,9 @@ export default function WhatsAppInboxPage() {
       setIsPdfDocument(false);
       const tryLoadImg = (src: string, isRetry = false) => {
         const img = new Image();
-        img.crossOrigin = 'anonymous';
+        if (!src.startsWith('data:')) {
+          img.crossOrigin = 'anonymous';
+        }
         img.onload = () => {
           setDocumentImageSrc(src);
           setLoadedSourceImage(img);
@@ -649,6 +729,65 @@ export default function WhatsAppInboxPage() {
       setLoadedSourceImage(null);
     }
   }, [activePhone, activeJob, activeMediaList, selectedMediaIndex, loadSourceFile]);
+
+  // ── Chime notification using Web Audio API (no external audio file needed) ──
+  const playChimeNotification = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const playTone = (freq: number, startAt: number, duration: number, gain: number) => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt);
+        gainNode.gain.setValueAtTime(0, ctx.currentTime + startAt);
+        gainNode.gain.linearRampToValueAtTime(gain, ctx.currentTime + startAt + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startAt + duration);
+        osc.start(ctx.currentTime + startAt);
+        osc.stop(ctx.currentTime + startAt + duration + 0.05);
+      };
+      // Three-tone chime: D5 → F#5 → A5
+      playTone(587.3, 0.0,  0.4, 0.3);
+      playTone(739.9, 0.15, 0.4, 0.25);
+      playTone(880.0, 0.30, 0.6, 0.2);
+    } catch {
+      // AudioContext blocked (e.g. before user interaction) — silently skip
+    }
+  }, []);
+
+  // ── Auto-select latest document & play chime when new docs/tickets arrive ──
+  useEffect(() => {
+    if (!queueItems || queueItems.length === 0) return;
+
+    const currentQueueLen = queueItems.length;
+    const prevQueueLen = prevQueueLengthRef.current;
+
+    // New ticket arrived
+    if (prevQueueLen > 0 && currentQueueLen > prevQueueLen) {
+      playChimeNotification();
+    }
+    prevQueueLengthRef.current = currentQueueLen;
+
+    // Check each job for new documents
+    queueItems.forEach((job: any) => {
+      const jobId = job.id;
+      const docCount = (job.mediaMessages || []).length;
+      const prevCount = prevDocsLengthRef.current[jobId] ?? docCount; // Init silently
+
+      if (prevCount > 0 && docCount > prevCount) {
+        // New document arrived for this job
+        playChimeNotification();
+
+        // If this is the currently viewed job, jump to the latest document
+        if (jobId === selectedJobId || job.phone === activePhone) {
+          setSelectedMediaIndex(docCount - 1);
+        }
+      }
+      prevDocsLengthRef.current[jobId] = docCount;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueItems]);
 
   // Handle local file upload
   const handleLocalFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1274,6 +1413,28 @@ export default function WhatsAppInboxPage() {
     // STRICT RULE: Operator remains in 100% manual control (NO auto next file or auto switch)
   };
 
+    const handleApplyCropStudio = (result: CropResult, targetSide: 'FRONT' | 'BACK') => {
+    if (targetSide === 'FRONT') {
+      setPvcFrontCrop({ isSaved: true, dataUrl: result.dataUrl });
+      setFrontCropBox(result.cropBox);
+      setFrontQuad(result.quad);
+      setCardTray((prev) =>
+        prev.map((card) =>
+          card.id === activeCardSlotId ? { ...card, frontCrop: { isSaved: true, dataUrl: result.dataUrl, label: activeJob?.fileName || 'Front Image' } } : card
+        )
+      );
+    } else {
+      setPvcBackCrop({ isSaved: true, dataUrl: result.dataUrl });
+      setBackCropBox(result.cropBox);
+      setBackQuad(result.quad);
+      setCardTray((prev) =>
+        prev.map((card) =>
+          card.id === activeCardSlotId ? { ...card, backCrop: { isSaved: true, dataUrl: result.dataUrl, label: activeJob?.fileName || 'Back Image' } } : card
+        )
+      );
+    }
+  };
+
   const handleAddFrontClick = () => {
     if (pvcFrontCrop.isSaved) {
       setConfirmReplaceSide('FRONT');
@@ -1680,17 +1841,35 @@ export default function WhatsAppInboxPage() {
    */
   const handleStartWork = () => {
     if (!activeJob) return;
+    setShowServiceModal(true);
+  };
+
+  const handleConfirmStartServices = (selectedServices: Array<{ service_type: string; service_name: string; price: number }>) => {
+    if (!activeJob) return;
     setLastActivityTime(Date.now());
-    if (activeJob.order?.id) {
-      updateStatusMutation.mutate(
-        { id: activeJob.order.id, status: 'PRINTING', staffId: currentUser?.id },
+
+    const executeStart = (orderId: string) => {
+      startTicketWorkMutation.mutate(
+        {
+          ticketId: orderId,
+          staffId: currentUser?.id,
+          initialServices: selectedServices,
+        },
         {
           onSuccess: () => {
+            setShowServiceModal(false);
             refetch();
             refetchOrders();
           },
+          onError: (err: any) => {
+            alert(`Failed to start ticket work: ${err.message}`);
+          }
         }
       );
+    };
+
+    if (activeJob.order?.id) {
+      executeStart(activeJob.order.id);
     } else {
       createOrderMutation.mutate(
         {
@@ -1703,22 +1882,17 @@ export default function WhatsAppInboxPage() {
           pageCount: 1,
           copies: 1,
           colorMode: 'COLOR',
-          totalAmount: customPrice,
+          totalAmount: selectedServices.reduce((sum, s) => sum + s.price, 0) || customPrice,
           assignedStaffId: currentUser?.id,
           notes: `In Progress · Started by: ${operatorName}`,
         },
         {
           onSuccess: (newOrd) => {
-            updateStatusMutation.mutate(
-              { id: newOrd.id, status: 'PRINTING', staffId: currentUser?.id },
-              {
-                onSuccess: () => {
-                  refetch();
-                  refetchOrders();
-                },
-              }
-            );
+            executeStart(newOrd.id);
           },
+          onError: (err: any) => {
+            alert(`Failed to create ticket: ${err.message}`);
+          }
         }
       );
     }
@@ -2057,7 +2231,15 @@ export default function WhatsAppInboxPage() {
             </div>
           )}
 
-          
+          <button
+            type="button"
+            onClick={() => setShowGatewayModal(true)}
+            className="h-8 px-2.5 rounded-xl border border-[#25D366]/40 bg-[#0f2952] hover:bg-[#1e40af] text-[#4ADE80] flex items-center gap-1 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+            title="Scan QR / WhatsApp Bot Status"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-[#25D366]" />
+            <span>WA Bot</span>
+          </button>
 
           <Button
             size="sm"
@@ -2244,14 +2426,14 @@ export default function WhatsAppInboxPage() {
           </div>
         </div>
 
-        {/* ── CENTER PANEL: MAIN EDITING CANVAS WITH INTEGRATED CROP TOOLS (5 cols) ── */}
+        {/* ── CENTER PANEL: MAXIMIZED LIVE CANVAS VIEWPORT (5 cols) ── */}
         <div
-          className="col-span-12 md:col-span-5 flex flex-col justify-between overflow-hidden relative bg-[#F1F5F9]"
+          className="col-span-12 md:col-span-5 flex flex-col justify-between overflow-hidden relative bg-[#0F172A]"
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         >
-          {/* Integrated Top Workspace Toolbar */}
-          <div className="h-11 bg-[#FFFFFF] border-b border-[#E2E8F0] px-3 flex items-center justify-between text-xs shrink-0 shadow-2xs">
+          {/* Top Control Bar: Front/Back side or PDF pages + Pop-up Crop Studio Trigger */}
+          <div className="h-12 bg-[#FFFFFF] border-b border-[#CBD5E1] px-3 flex items-center justify-between text-xs shrink-0 shadow-xs z-10">
             {/* Front / Back Switcher OR PDF Page Controls */}
             {isPdfDocument ? (
               <div className="flex items-center gap-2 bg-[#F8FAFC] px-2 py-1 rounded-xl border border-[#CBD5E1]">
@@ -2289,7 +2471,7 @@ export default function WhatsAppInboxPage() {
                     }
                   }}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    activeCropTarget === 'FRONT' ? 'bg-[#198754] text-white shadow-2xs' : 'text-[#495057] hover:text-[#081B3A]'
+                    activeCropTarget === 'FRONT' ? 'bg-[#198754] text-white shadow-xs' : 'text-[#495057] hover:text-[#081B3A]'
                   }`}
                 >
                   🪪 Front Side
@@ -2306,7 +2488,7 @@ export default function WhatsAppInboxPage() {
                     }
                   }}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    activeCropTarget === 'BACK' ? 'bg-[#0D6EFD] text-white shadow-2xs' : 'text-[#495057] hover:text-[#081B3A]'
+                    activeCropTarget === 'BACK' ? 'bg-[#0D6EFD] text-white shadow-xs' : 'text-[#495057] hover:text-[#081B3A]'
                   }`}
                 >
                   🔄 Back Side
@@ -2314,54 +2496,29 @@ export default function WhatsAppInboxPage() {
               </div>
             )}
 
+            {/* Quick Actions & Pop-up Crop Studio Trigger */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => rotateSourceImage(90)}
+                className="px-2.5 py-1 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#081B3A] border border-[#CBD5E1] font-bold text-xs flex items-center gap-1 cursor-pointer"
+                title="Rotate Document 90°"
+              >
+                <RotateCw className="w-3.5 h-3.5 text-[#0D6EFD]" /> Rotate
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCropModal(true)}
+                className="px-3.5 py-1 rounded-lg bg-[#0D6EFD] hover:bg-[#0b5ed7] text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all active:scale-[0.98]"
+                title="Open Dedicated Full-Screen Crop Studio"
+              >
+                <Crop className="w-3.5 h-3.5" /> Open Crop Studio
+              </button>
             </div>
+          </div>
 
-<div className="flex-1 flex flex-row overflow-hidden relative w-full">
-
-              {/* Vertical Editing Tools Controls */}
-              <div className="w-14 bg-[#FFFFFF] border-r border-[#E2E8F0] flex flex-col items-center py-3 gap-3 shrink-0 z-10 overflow-y-auto no-scrollbar shadow-sm">
-                <button onClick={() => setCropToolType('FREE_TRANSFORM')} className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${cropToolType === 'FREE_TRANSFORM' ? 'bg-[#0D6EFD] text-white shadow-xs' : 'bg-[#F8FAFC] text-[#495057] hover:bg-[#E2E8F0] border border-[#E2E8F0]'}`} title="Free Crop">
-                  <Crop className="w-4 h-4" />
-                  <span className="text-[8px] font-bold leading-none">Crop</span>
-                </button>
-                <button onClick={() => setCropToolType('SCANNER_CORNER_PERSPECTIVE')} className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 cursor-pointer ${cropToolType === 'SCANNER_CORNER_PERSPECTIVE' ? 'bg-[#0D6EFD] text-white shadow-xs' : 'bg-[#F8FAFC] text-[#495057] hover:bg-[#E2E8F0] border border-[#E2E8F0]'}`} title="4-Corner Scanner">
-                  <Sliders className="w-4 h-4" />
-                  <span className="text-[8px] font-bold leading-none">Scan</span>
-                </button>
-                <button onClick={handleAutoDetectEdges} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#E8F5E9] hover:bg-[#DCFCE7] text-[#198754] border border-[#86EFAC] cursor-pointer shadow-xs" title="Auto Crop & Detect">
-                  <Sparkles className="w-4 h-4" />
-                  <span className="text-[8px] font-bold leading-none">Auto</span>
-                </button>
-                <div className="w-6 h-px bg-[#CBD5E1] shrink-0 my-0.5"></div>
-                <button onClick={() => alert("Deskew algorithm initialized...")} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Deskew">
-                  <Wand2 className="w-4 h-4 text-[#6F42C1]" />
-                  <span className="text-[8px] font-bold leading-none text-[#6F42C1]">Deskew</span>
-                </button>
-                <button onClick={() => rotateSourceImage(90)} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Rotate 90�">
-                  <RotateCw className="w-4 h-4 text-[#0D6EFD]" />
-                  <span className="text-[8px] font-bold leading-none text-[#0D6EFD]">Rotate</span>
-                </button>
-                <button onClick={() => alert('Flip horizontally')} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Flip Horizontal">
-                  <FlipHorizontal className="w-4 h-4 text-[#0D6EFD]" />
-                  <span className="text-[8px] font-bold leading-none text-[#0D6EFD]">Flip</span>
-                </button>
-                <div className="w-6 h-px bg-[#CBD5E1] shrink-0 my-0.5"></div>
-                <button onClick={() => alert("Brightness/Contrast filter")} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Brightness">
-                  <Sun className="w-4 h-4 text-[#EAB308]" />
-                  <span className="text-[8px] font-bold leading-none text-[#EAB308]">Bright</span>
-                </button>
-                <button onClick={() => alert("Brightness/Contrast filter")} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#495057] border border-[#E2E8F0] cursor-pointer" title="Contrast">
-                  <Contrast className="w-4 h-4 text-[#14B8A6]" />
-                  <span className="text-[8px] font-bold leading-none text-[#14B8A6]">Contr</span>
-                </button>
-                <button onClick={handleResetQuad} className="w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 bg-[#FFF4EC] hover:bg-[#FED7AA] text-[#EA580C] border border-[#FDBA74] cursor-pointer shadow-xs mt-auto" title="Reset Crop">
-                  <RefreshCw className="w-4 h-4" />
-                  <span className="text-[8px] font-bold leading-none">Reset</span>
-                </button>
-              </div>
-
-{/* Interactive Canvas Viewport */}
-          <div className="flex-1 flex items-center justify-center overflow-hidden p-4 relative select-none">
+          {/* Interactive Maximized Canvas Viewport (Perfect Centered Zoom) */}
+          <div className="flex-1 flex items-center justify-center overflow-hidden p-6 relative select-none">
             {isOfficeDocument && officeDocInfo ? (
               <div className="w-full h-full bg-[#FFFFFF] rounded-2xl border border-[#CBD5E1] shadow-md overflow-hidden flex flex-col">
                 <WordDocumentViewer
@@ -2374,8 +2531,12 @@ export default function WhatsAppInboxPage() {
             ) : (
               <div
                 ref={modalWorkspaceContainerRef}
-                style={{ transform: `scale(${zoomScale})`, transition: 'transform 0.1s ease-out' }}
-                className="relative max-w-[94%] max-h-[88%] bg-[#FFFFFF] shadow-lg rounded-2xl border border-[#CBD5E1] p-1.5 flex items-center justify-center"
+                style={{
+                  transform: `scale(${zoomScale})`,
+                  transformOrigin: 'center center',
+                  transition: 'transform 0.12s ease-out'
+                }}
+                className="relative max-w-[96%] max-h-[92%] bg-[#FFFFFF] shadow-2xl rounded-2xl border border-slate-700 p-2 flex items-center justify-center"
               >
                 {fileLoadError ? (
                   <div className="p-8 flex flex-col items-center justify-center text-center space-y-3 max-w-sm">
@@ -2397,94 +2558,12 @@ export default function WhatsAppInboxPage() {
                   <img
                     src={documentImageSrc}
                     alt="Document"
-                    className="max-h-[460px] max-w-full object-contain pointer-events-none select-none block rounded-xl"
+                    className="max-h-[58vh] max-w-full object-contain pointer-events-none select-none block rounded-xl"
                   />
                 ) : (
                   <div className="text-[#6B7280] p-8 text-xs">No document loaded</div>
                 )}
-
-              {/* ── INTERACTIVE 4-CORNER / PERSPECTIVE MASK ── */}
-              {loadedSourceImage && cropToolType === 'SCANNER_CORNER_PERSPECTIVE' && (
-                <div className="absolute inset-0 pointer-events-none z-20">
-                  <svg className="w-full h-full absolute inset-0 overflow-visible pointer-events-none">
-                    <defs>
-                      <mask id="smart-crop-mask-unified">
-                        <rect width="100%" height="100%" fill="white" />
-                        <polygon
-                          points={`
-                            ${activeQuad.tl.x}%,${activeQuad.tl.y}%
-                            ${activeQuad.tr.x}%,${activeQuad.tr.y}%
-                            ${activeQuad.br.x}%,${activeQuad.br.y}%
-                            ${activeQuad.bl.x}%,${activeQuad.bl.y}%
-                          `}
-                          fill="black"
-                        />
-                      </mask>
-                    </defs>
-
-                    {/* Dark transparent overlay OUTSIDE crop */}
-                    <rect width="100%" height="100%" fill="rgba(0, 0, 0, 0.40)" mask="url(#smart-crop-mask-unified)" />
-
-                    {/* Bounding Box */}
-                    <polygon
-                      points={`
-                        ${activeQuad.tl.x}%,${activeQuad.tl.y}%
-                        ${activeQuad.tr.x}%,${activeQuad.tr.y}%
-                        ${activeQuad.br.x}%,${activeQuad.br.y}%
-                        ${activeQuad.bl.x}%,${activeQuad.bl.y}%
-                      `}
-                      fill="none"
-                      stroke="#0D6EFD"
-                      strokeWidth="2"
-                      strokeDasharray="4 3"
-                    />
-                  </svg>
-
-                  {/* Center Drag to Move Entire Crop Area */}
-                  <div
-                    style={{
-                      left: `${(activeQuad.tl.x + activeQuad.tr.x + activeQuad.br.x + activeQuad.bl.x) / 4}%`,
-                      top: `${(activeQuad.tl.y + activeQuad.tr.y + activeQuad.br.y + activeQuad.bl.y) / 4}%`,
-                    }}
-                    onMouseDown={(e) => handleMouseDown(e, 'DRAG_MOVE_QUAD')}
-                    className="absolute w-8 h-8 -ml-4 -mt-4 bg-[#0D6EFD]/80 hover:bg-[#0D6EFD] text-white rounded-full flex items-center justify-center cursor-move shadow-md pointer-events-auto transition-transform hover:scale-110 border border-white"
-                    title="Drag to move entire crop window"
-                  >
-                    <Move className="w-4 h-4" />
-                  </div>
-
-                  {/* 4 Corner Magnetic Handles */}
-                  {[
-                    { key: 'DRAG_CORNER_TL' as const, pos: activeQuad.tl },
-                    { key: 'DRAG_CORNER_TR' as const, pos: activeQuad.tr },
-                    { key: 'DRAG_CORNER_BR' as const, pos: activeQuad.br },
-                    { key: 'DRAG_CORNER_BL' as const, pos: activeQuad.bl },
-                  ].map((corner) => (
-                    <div
-                      key={corner.key}
-                      style={{ left: `${corner.pos.x}%`, top: `${corner.pos.y}%` }}
-                      onMouseDown={(e) => handleMouseDown(e, corner.key)}
-                      className="absolute w-5 h-5 -ml-2.5 -mt-2.5 bg-[#FFFFFF] border-2 border-[#0D6EFD] rounded-full shadow-md cursor-grab active:cursor-grabbing pointer-events-auto hover:scale-125 transition-transform"
-                    />
-                  ))}
-
-                  {/* 4 Edge Midpoint Handles */}
-                  {[
-                    { key: 'DRAG_EDGE_TOP' as const, pos: { x: (activeQuad.tl.x + activeQuad.tr.x) / 2, y: (activeQuad.tl.y + activeQuad.tr.y) / 2 } },
-                    { key: 'DRAG_EDGE_RIGHT' as const, pos: { x: (activeQuad.tr.x + activeQuad.br.x) / 2, y: (activeQuad.tr.y + activeQuad.br.y) / 2 } },
-                    { key: 'DRAG_EDGE_BOTTOM' as const, pos: { x: (activeQuad.bl.x + activeQuad.br.x) / 2, y: (activeQuad.bl.y + activeQuad.br.y) / 2 } },
-                    { key: 'DRAG_EDGE_LEFT' as const, pos: { x: (activeQuad.tl.x + activeQuad.bl.x) / 2, y: (activeQuad.tl.y + activeQuad.bl.y) / 2 } },
-                  ].map((edge) => (
-                    <div
-                      key={edge.key}
-                      style={{ left: `${edge.pos.x}%`, top: `${edge.pos.y}%` }}
-                      onMouseDown={(e) => handleMouseDown(e, edge.key)}
-                      className="absolute w-4 h-4 -ml-2 -mt-2 bg-[#0D6EFD] border-2 border-white rounded-md shadow-md cursor-pointer pointer-events-auto hover:scale-125 transition-transform"
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+              </div>
             )}
           </div>
 
@@ -2514,13 +2593,11 @@ export default function WhatsAppInboxPage() {
                 </div>
               </div>
 
-              {/* Thumbnails Row */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 max-h-24">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
                 {Array.from({ length: pdfPageCount }, (_, i) => i + 1).map((pNum) => {
                   const isCur = currentPdfPage === pNum;
                   const isChecked = selectedPdfPages.includes(pNum);
                   const pageObj = pdfPagesList.find((p) => p.pageNum === pNum);
-
                   return (
                     <div
                       key={pNum}
@@ -2560,20 +2637,26 @@ export default function WhatsAppInboxPage() {
             </div>
           )}
 
-          {/* Canvas Bottom Strip (Zoom & Document Selector) */}
-          <div className="h-14 bg-[#FFFFFF] border-t border-[#E2E8F0] px-3 flex items-center justify-between text-xs shrink-0">
-            <div className="flex items-center gap-1.5">
+          {/* Canvas Bottom Strip (Smooth Zoom & Document Selector) */}
+          <div className="h-13 bg-[#FFFFFF] border-t border-[#E2E8F0] px-4 flex items-center justify-between text-xs shrink-0 shadow-xs">
+            <div className="flex items-center gap-1.5 bg-[#F1F5F9] px-2 py-1 rounded-xl border border-[#CBD5E1]">
               <button
-                onClick={() => setZoomScale(z => Math.max(0.4, z - 0.15))}
-                className="p-1 rounded-lg bg-[#F1F5F9] text-[#081B3A] cursor-pointer"
+                onClick={() => setZoomScale((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
+                className="p-1 rounded-lg hover:bg-white text-[#081B3A] cursor-pointer transition-colors"
                 title="Zoom Out"
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
-              <span className="font-mono text-xs font-bold text-[#081B3A]">{Math.round(zoomScale * 100)}%</span>
               <button
-                onClick={() => setZoomScale(z => Math.min(2.5, z + 0.15))}
-                className="p-1 rounded-lg bg-[#F1F5F9] text-[#081B3A] cursor-pointer"
+                onClick={() => setZoomScale(1.0)}
+                className="font-mono text-xs font-bold text-[#081B3A] px-1 hover:text-[#0D6EFD] cursor-pointer"
+                title="Click to Reset Zoom (100%)"
+              >
+                {Math.round(zoomScale * 100)}%
+              </button>
+              <button
+                onClick={() => setZoomScale((z) => Math.min(2.5, Number((z + 0.15).toFixed(2))))}
+                className="p-1 rounded-lg hover:bg-white text-[#081B3A] cursor-pointer transition-colors"
                 title="Zoom In"
               >
                 <ZoomIn className="w-3.5 h-3.5" />
@@ -2592,8 +2675,8 @@ export default function WhatsAppInboxPage() {
                       loadSourceFile(m.mediaUrl, isPdf);
                     }
                   }}
-                  className={`px-2 py-1 rounded-lg border text-[10px] font-bold cursor-pointer transition-all ${
-                    selectedMediaIndex === idx ? 'bg-[#0D6EFD] text-white border-[#0D6EFD]' : 'bg-[#F8FAFC] text-[#495057] border-[#E2E8F0]'
+                  className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold cursor-pointer transition-all ${
+                    selectedMediaIndex === idx ? 'bg-[#0D6EFD] text-white border-[#0D6EFD] shadow-xs' : 'bg-[#F8FAFC] text-[#495057] border-[#CBD5E1] hover:bg-[#F1F5F9]'
                   }`}
                 >
                   Doc {idx + 1}
@@ -2602,12 +2685,12 @@ export default function WhatsAppInboxPage() {
             </div>
           </div>
         </div>
-          </div>
 
         {/* ── RIGHT PANEL: LIVE OUTPUT PREVIEWS & TRAY (4 cols) ─────────────── */}
-        <div className="col-span-12 md:col-span-4 bg-[#F8FAFC] p-3.5 flex flex-col justify-between overflow-y-auto space-y-3">
-          <div className="space-y-3">
-            <div className="border-b border-[#E2E8F0] pb-2 flex items-center justify-between">
+        <div className="col-span-12 md:col-span-4 bg-[#F8FAFC] p-3.5 flex flex-col h-full overflow-hidden">
+          {/* Bottom Section: Scrollable Live Output Preview Area */}
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
+            <div className="border-b border-[#E2E8F0] pb-2 flex items-center justify-between sticky top-0 bg-[#F8FAFC] z-10">
               <span className="text-xs font-bold text-[#081B3A] uppercase tracking-wide flex items-center gap-1.5">
                 <CreditCard className="w-4 h-4 text-[#0D6EFD]" /> Live Output Preview
               </span>
@@ -2735,7 +2818,6 @@ export default function WhatsAppInboxPage() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -3032,11 +3114,34 @@ export default function WhatsAppInboxPage() {
       <WhatsAppGatewayModal
         open={showGatewayModal}
         onClose={() => setShowGatewayModal(false)}
-        branchId={selectedBranchId || branches?.[0]?.id || 'f5abaacc-d2b6-4591-91fb-314b2188e18c'}
+        branchId={selectedBranchId || (branches?.some((b: any) => b.id === 'branch-123') ? 'branch-123' : branches?.[0]?.id || 'branch-123')}
         onOrderCreated={() => {
           refetch();
           refetchOrders();
         }}
+      />
+
+      {/* ── STEP 3: START WORK SERVICE SELECTION MODAL ─────────────────────────── */}
+      
+      {/* ── POP-UP CROP STUDIO MODAL ─────────────────────────────────────────── */}
+      <CropStudioModal
+        isOpen={showCropModal}
+        onClose={() => setShowCropModal(false)}
+        imageUrl={documentImageSrc || (selectedDocMsg?.mediaUrl ? (selectedDocMsg.mediaUrl.startsWith('http') ? selectedDocMsg.mediaUrl : `http://localhost:4000${selectedDocMsg.mediaUrl.startsWith('/') ? selectedDocMsg.mediaUrl : `/${selectedDocMsg.mediaUrl}`}`) : '')}
+        initialTarget={activeCropTarget}
+        initialQuad={activeCropTarget === 'FRONT' ? frontQuad : backQuad}
+        initialCropBox={activeCropTarget === 'FRONT' ? frontCropBox : backCropBox}
+        initialRotation={rotationAngle}
+        onApplyCrop={handleApplyCropStudio}
+      />
+
+      <ServiceSelectionModal
+        open={showServiceModal}
+        onClose={() => setShowServiceModal(false)}
+        ticketNo={activeJob?.tokenNumber || 'T-New'}
+        customerName={activeJob?.customerName || 'Customer'}
+        onStartWork={handleConfirmStartServices}
+        isSubmitting={startTicketWorkMutation.isPending}
       />
     </div>
   );

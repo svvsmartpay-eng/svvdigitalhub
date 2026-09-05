@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useFilterStore } from '@/stores/filter.store';
 import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
 export function useAssets(params?: any) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({
-    queryKey: ['assets', params],
+    queryKey: ['assets', params, selectedBranches],
     queryFn: async () => {
       try {
         const r = await apiClient.get('/assets', { params });
@@ -65,6 +67,7 @@ export function useAssetHistory(id: string) {
 }
 
 export function useAssetStats(branchId?: string) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({
     queryKey: ['asset-stats', branchId],
     queryFn: async () => {
@@ -74,7 +77,9 @@ export function useAssetStats(branchId?: string) {
       } catch {}
 
       try {
-        const { data: supaAssets } = await supabase.from('assets').select('status, criticality');
+        let query = supabase.from('assets').select('status, criticality');
+        if (selectedBranches.length > 0) query = query.in('branchId', selectedBranches);
+        const { data: supaAssets } = await query;
         const list = supaAssets || [];
         return {
           total: list.length || 59,

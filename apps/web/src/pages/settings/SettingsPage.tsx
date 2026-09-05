@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import PageHeader from '@/components/shared/PageHeader';
 import { useUsers, useResetPassword, useRoles, useDeleteUser } from '@/api/users.api';
 import { useAuthStore } from '@/stores/auth.store';
+import { useBranches } from '@/api/branches.api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePluginSettings, useTogglePlugin } from '@/api/plugins.api';
@@ -34,15 +35,7 @@ export default function SettingsPage() {
   const [filterBranch, setFilterBranch] = useState('');
   const [filterRole, setFilterRole] = useState('');
   const [selectedSessionBranchId, setSelectedSessionBranchId] = useState<string | null>(null);
-  const [localBranches, setLocalBranches] = useState<any[]>(() => {
-    try {
-      const local = localStorage.getItem('svv_branches_store');
-      return local ? JSON.parse(local) : [
-        { id: 'f5abaacc-d2b6-4591-91fb-314b2188e18c', name: 'SVV Main Hub', code: 'SVV-1', city: 'Isnapur', sessionStatus: 'OFFLINE' },
-        { id: 'branch-2', name: 'SVV Digital Desk', code: 'SVV-2', city: 'Patancheru', sessionStatus: 'OFFLINE' }
-      ];
-    } catch { return []; }
-  });
+  const { data: localBranches = [] } = useBranches();
 
   const { user } = useAuthStore();
   const { data: usersData, isLoading, isError, error, refetch } = useUsers({

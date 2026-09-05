@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useFilterStore } from '@/stores/filter.store';
 import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
 export function useWorkOrders(params?: any) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({
-    queryKey: ['work-orders', params],
+    queryKey: ['work-orders', params, selectedBranches],
     queryFn: async () => {
       try {
         const r = await apiClient.get('/work-orders', { params });
@@ -12,10 +14,9 @@ export function useWorkOrders(params?: any) {
       } catch {}
 
       try {
-        const { data: supaWOs, error } = await supabase
-          .from('work_orders')
-          .select('*, branch:branches(name, code), asset:assets(name, assetId)')
-          .order('createdAt', { ascending: false });
+        let query = supabase.from('work_orders').select('*, branch:branches(name, code), asset:assets(name, assetId)').order('createdAt', { ascending: false });
+        if (selectedBranches.length > 0) query = query.in('branchId', selectedBranches);
+        const { data: supaWOs, error } = await query;
 
         if (!error && supaWOs) return supaWOs;
       } catch {}

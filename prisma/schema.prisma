@@ -289,6 +289,7 @@ model Branch {
   users          UserBranch[]
   issues         Issue[]
   workOrders     WorkOrder[]
+  whatsappSession WhatsAppSession?
   serviceVisits  ServiceVisit[]
   pmPlans        PMPlan[]
   budgets        Budget[]
@@ -1926,3 +1927,20 @@ model BranchWhatsAppConfig {
 
 
 
+
+
+model WhatsAppSession {
+  id           String   @id @default(uuid())
+  branchId     String   @unique
+  phoneNumber  String
+  sessionId    String   @unique
+  status       String   @default("DISCONNECTED") // CONNECTED, DISCONNECTED
+  connectedAt  DateTime?
+  lastSeen     DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_sessions")
+}

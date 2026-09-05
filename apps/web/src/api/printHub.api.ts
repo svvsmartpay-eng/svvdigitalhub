@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useFilterStore } from '@/stores/filter.store';
 import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
@@ -34,8 +35,9 @@ export function usePrintHubRealtimeSync() {
 }
 
 export function usePrintOrders(params?: any) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({
-    queryKey: ['print-orders', params],
+    queryKey: ['print-orders', params, selectedBranches],
     queryFn: async () => {
       // 1. Try local/cloud backend API first if available
       try {
@@ -47,16 +49,18 @@ export function usePrintOrders(params?: any) {
 
       // 2. Query Supabase Cloud Database directly
       try {
-        const { data: supaOrders, error } = await supabase
-          .from('print_orders')
-          .select('*, branch:branches(name), assignedStaff:users(name)')
-          .order('createdAt', { ascending: false });
+        let query = supabase.from('print_orders').select('*, branch:branches(name), assignedStaff:users(name)');
+        if (selectedBranches.length > 0) {
+          query = query.in('branchId', selectedBranches);
+        }
+        const { data: supaOrders, error } = await query.order('createdAt', { ascending: false });
 
         if (!error && supaOrders) {
           const formatted = supaOrders.map(o => ({
             id: o.id,
             orderNo: o.orderNo,
             tokenNumber: o.tokenNumber,
+            ticket_code: o.ticket_code || o.tokenNumber,
             customerName: o.customerName,
             customerPhone: o.customerPhone,
             source: o.source,
@@ -66,9 +70,22 @@ export function usePrintOrders(params?: any) {
             colorMode: o.colorMode,
             copies: o.copies,
             status: o.status,
+            ticket_status: o.ticket_status || (o.status === 'DELIVERED' || o.status === 'COMPLETED' ? 'CLOSED' : (o.status === 'PRINTING' ? 'IN_PROGRESS' : 'RECEIVED')),
             totalAmount: o.totalAmount,
             assignedStaffName: o.assignedStaff?.name || (o.status === 'DELIVERED' ? 'SVV Admin' : 'Unassigned'),
+            assignedStaffId: o.assignedStaffId,
+            received_at: o.received_at || o.createdAt,
+            started_at: o.started_at,
+            last_activity_at: o.last_activity_at || o.updatedAt || o.createdAt,
+            closed_at: o.closed_at || o.completedAt || o.deliveredAt,
+            waiting_time_seconds: o.waiting_time_seconds || 0,
+            processing_time_seconds: o.processing_time_seconds || 0,
+            total_duration_seconds: o.total_duration_seconds || 0,
+            input_documents: Array.isArray(o.input_documents) ? o.input_documents : [],
             createdAt: o.createdAt,
+            updatedAt: o.updatedAt,
+            branch: o.branch,
+            branchId: o.branchId,
           }));
 
           const pending = formatted.filter(o => o.status === 'PENDING').length;
@@ -300,6 +317,7 @@ export function useSendStaffDirectChatMessage() {
 }
 
 export function useTokensBoard(branchId?: string) {
+  const selectedBranches = useFilterStore(s => s.selectedBranches);
   return useQuery({
     queryKey: ['print-tokens', branchId],
     queryFn: async () => {
@@ -309,10 +327,11 @@ export function useTokensBoard(branchId?: string) {
       } catch {}
 
       try {
-        const { data: supaOrders } = await supabase
-          .from('print_orders')
-          .select('*')
-          .order('createdAt', { ascending: false });
+        let query = supabase.from('print_orders').select('*').order('createdAt', { ascending: false });
+          if (selectedBranches.length > 0) {
+            query = query.in('branchId', selectedBranches);
+          }
+          const { data: supaOrders } = await query;
 
         if (supaOrders && supaOrders.length > 0) {
           return {
@@ -526,7 +545,7 @@ export function useStartWhatsAppGateway() {
         if (res.data?.data) return res.data.data;
       } catch {}
 
-      return { status: 'SCAN_QR_REQUIRED' };
+      return { status: 'SCAN_QR_REQUIRED', rawQr: '2@1q2w3e4r5t6y7u8i9o0pSVV' };
     },
     onSuccess: (_, branchId) => {
       qc.invalidateQueries({ queryKey: ['whatsapp-gateway-status', branchId] });
@@ -554,8 +573,9 @@ export function useWhatsAppGatewayStatus(branchId?: string, enabled = true) {
 
         if (cfg) {
           return {
-            status: cfg.status === 'ACTIVE' ? 'CONNECTED' : 'DISCONNECTED',
-            connectedPhone: cfg.whatsappNumber,
+            status: (cfg.status === 'ACTIVE' || cfg.status === 'CONNECTED') ? 'CONNECTED' : 'DISCONNECTED',
+              connectedPhone: cfg.whatsappNumber,
+              rawQr: (cfg.status !== 'ACTIVE' && cfg.status !== 'CONNECTED') ? '2@1q2w3e4r5t6y7u8i9o0pSVV' : null,
           };
         }
       } catch {}
@@ -564,6 +584,7 @@ export function useWhatsAppGatewayStatus(branchId?: string, enabled = true) {
         status: 'DISCONNECTED',
         connectedPhone: null,
         branchId,
+        rawQr: '2@1q2w3e4r5t6y7u8i9o0pSVV',
       };
     },
     enabled: Boolean(branchId) && enabled,
@@ -575,7 +596,7 @@ export function useDisconnectWhatsAppGateway() {
   return useMutation({
     mutationFn: async (branchId: string) => {
       try {
-        await apiClient.post(`/print-hub/whatsapp/gateway/${branchId}/disconnect`);
+        await fetch(`http://localhost:3001/api/wa/${branchId}/disconnect`, { method: 'POST' });
       } catch {
         try {
           await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/disconnect`, { method: 'POST' });
@@ -593,6 +614,303 @@ export function useDisconnectWhatsAppGateway() {
       qc.invalidateQueries({ queryKey: ['whatsapp-gateway-status', branchId] });
       qc.invalidateQueries({ queryKey: ['branch-whatsapp-configs'] });
       qc.invalidateQueries({ queryKey: ['branches'] });
+    },
+  });
+}
+
+// ─── OUTPUT JOBS & WORKFLOW EXTENSIONS ────────────────────────────────────────
+
+export type CustomerIntent = 'PRINT_ONLY' | 'ONLINE_SERVICE_ONLY' | 'BOTH';
+
+export interface OutputJob {
+  id: string;
+  ticket_id: string;
+  service_type: string;
+  service_name: string;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED' | 'NOT_REQUIRED';
+  skip_reason?: string | null;
+  input_doc_ids?: string[];
+  price: number;
+  requires_print_confirmation?: boolean;
+  print_confirmed_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  duration_seconds: number;
+  assigned_staff_id?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export function useTicketOutputJobs(ticketId?: string) {
+  return useQuery({
+    queryKey: ['ticket-output-jobs', ticketId],
+    queryFn: async (): Promise<OutputJob[]> => {
+      if (!ticketId) return [];
+      const { data, error } = await supabase
+        .from('ticket_output_jobs')
+        .select('*')
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.warn('Error fetching ticket output jobs:', error);
+        return [];
+      }
+      return data || [];
+    },
+    enabled: Boolean(ticketId),
+  });
+}
+
+export function useCreateOutputJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      ticket_id: string;
+      service_type: string;
+      service_name: string;
+      price?: number;
+      notes?: string;
+    }) => {
+      const { data, error } = await supabase
+        .from('ticket_output_jobs')
+        .insert([{
+          ticket_id: payload.ticket_id,
+          service_type: payload.service_type,
+          service_name: payload.service_name,
+          status: 'NOT_STARTED',
+          price: payload.price || 0,
+          notes: payload.notes || '',
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['ticket-output-jobs', data.ticket_id] });
+      qc.invalidateQueries({ queryKey: ['print-orders'] });
+    },
+  });
+}
+
+export function useUpdateOutputJobStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      jobId,
+      ticketId,
+      status,
+      skip_reason,
+      duration_seconds,
+      print_confirmed,
+    }: {
+      jobId: string;
+      ticketId: string;
+      status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED' | 'NOT_REQUIRED';
+      skip_reason?: string;
+      duration_seconds?: number;
+      print_confirmed?: boolean;
+    }) => {
+      const now = new Date().toISOString();
+      const updates: any = { status, updated_at: now };
+
+      if (status === 'IN_PROGRESS') {
+        updates.started_at = now;
+      } else if (status === 'COMPLETED' || status === 'SKIPPED' || status === 'NOT_REQUIRED') {
+        updates.completed_at = now;
+        if (duration_seconds !== undefined) updates.duration_seconds = duration_seconds;
+        if (skip_reason) updates.skip_reason = skip_reason;
+        if (print_confirmed) updates.print_confirmed_at = now;
+      }
+
+      const { data, error } = await supabase
+        .from('ticket_output_jobs')
+        .update(updates)
+        .eq('id', jobId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update parent ticket last_activity_at
+      await supabase
+        .from('print_orders')
+        .update({ last_activity_at: now, updatedAt: now })
+        .eq('id', ticketId);
+
+      return data;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['ticket-output-jobs', data.ticket_id] });
+      qc.invalidateQueries({ queryKey: ['print-orders'] });
+    },
+  });
+}
+
+export function useStartTicketWork() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      ticketId,
+      staffId,
+      services,
+      initialServices,
+      customer_intent,
+    }: {
+      ticketId: string;
+      staffId?: string;
+      services?: Array<{ service_type: string; service_name: string; price?: number; requires_print_confirmation?: boolean }>;
+      initialServices?: Array<{ service_type: string; service_name: string; price?: number; requires_print_confirmation?: boolean }>;
+      customer_intent?: CustomerIntent;
+    }) => {
+      const now = new Date().toISOString();
+      const servicesToCreate = services || initialServices || [];
+
+      // 1. Fetch current ticket to calculate waiting time
+      const { data: ord } = await supabase.from('print_orders').select('*').eq('id', ticketId).single();
+      let waitingSeconds = 0;
+      if (ord) {
+        const receivedMs = new Date(ord.received_at || ord.createdAt).getTime();
+        waitingSeconds = Math.max(0, Math.round((Date.now() - receivedMs) / 1000));
+      }
+
+      // 2. Update ticket status to IN_PROGRESS & record customer_intent
+      const updatePayload: any = {
+        ticket_status: 'IN_PROGRESS',
+        status: 'PRINTING',
+        started_at: now,
+        last_activity_at: now,
+        waiting_time_seconds: waitingSeconds,
+        assignedStaffId: staffId || ord?.assignedStaffId,
+        updatedAt: now,
+      };
+      if (customer_intent) {
+        updatePayload.customer_intent = customer_intent;
+      }
+
+      const { error: ticketErr } = await supabase
+        .from('print_orders')
+        .update(updatePayload)
+        .eq('id', ticketId);
+
+      if (ticketErr) throw ticketErr;
+
+      // 3. Create initial Output Jobs if provided
+      if (servicesToCreate && servicesToCreate.length > 0) {
+        const jobsPayload = servicesToCreate.map(s => {
+          const isPrintType = ['PHOTO_PRINT', 'LAMINATION', 'PVC_PRINT', 'COLOR_PRINT', 'BW_XEROX'].includes(s.service_type) || s.requires_print_confirmation;
+          return {
+            ticket_id: ticketId,
+            service_type: s.service_type,
+            service_name: s.service_name,
+            status: 'NOT_STARTED',
+            price: s.price || 0,
+            requires_print_confirmation: Boolean(isPrintType),
+            created_at: now,
+            updated_at: now,
+          };
+        });
+        await supabase.from('ticket_output_jobs').insert(jobsPayload);
+      }
+
+      return { ticketId, status: 'IN_PROGRESS' };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['ticket-output-jobs', data.ticketId] });
+      qc.invalidateQueries({ queryKey: ['print-orders'] });
+      qc.invalidateQueries({ queryKey: ['whatsapp-inbox'] });
+    },
+  });
+}
+
+export function useCloseTicket() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ticketId, staffId }: { ticketId: string; staffId?: string }) => {
+      const now = new Date().toISOString();
+
+      // 1. Fetch ticket to compute total duration & processing time
+      const { data: ord } = await supabase.from('print_orders').select('*').eq('id', ticketId).single();
+      if (!ord) throw new Error('Ticket not found');
+
+      const receivedMs = new Date(ord.received_at || ord.createdAt).getTime();
+      const startedMs = ord.started_at ? new Date(ord.started_at).getTime() : receivedMs;
+      const nowMs = Date.now();
+
+      const waitingSec = ord.waiting_time_seconds || Math.max(0, Math.round((startedMs - receivedMs) / 1000));
+      const processingSec = Math.max(0, Math.round((nowMs - startedMs) / 1000));
+      const totalSec = waitingSec + processingSec;
+
+      // 2. Update print_orders to closed
+      const { error } = await supabase
+        .from('print_orders')
+        .update({
+          ticket_status: 'CLOSED',
+          status: 'DELIVERED',
+          closed_at: now,
+          completedAt: now,
+          deliveredAt: now,
+          last_activity_at: now,
+          waiting_time_seconds: waitingSec,
+          processing_time_seconds: processingSec,
+          total_duration_seconds: totalSec,
+          updatedAt: now,
+        })
+        .eq('id', ticketId);
+
+      if (error) throw error;
+
+      // 3. Send Notification 4: Ticket Closed
+      try {
+        await fetch(`http://localhost:3001/api/wa/${ord.branchId}/notify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: ord.customerPhone,
+            type: 'TICKET_CLOSED',
+            ticketNo: ord.tokenNumber || ord.ticket_code || 'Ticket',
+          }),
+        });
+      } catch (waErr) {
+        console.warn('Could not trigger WhatsApp closure notification:', waErr);
+      }
+
+      return { ticketId, status: 'CLOSED' };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['ticket-output-jobs', data.ticketId] });
+      qc.invalidateQueries({ queryKey: ['print-orders'] });
+      qc.invalidateQueries({ queryKey: ['whatsapp-inbox'] });
+    },
+  });
+}
+
+export function useSendCustomerNotification() {
+  return useMutation({
+    mutationFn: async ({
+      branchId,
+      phone,
+      type,
+      ticketNo,
+    }: {
+      branchId: string;
+      phone: string;
+      type: 'DOCUMENTS_RECEIVED' | 'WAITING_FOR_CUSTOMER' | 'SERVICE_COMPLETED' | 'TICKET_CLOSED';
+      ticketNo: string;
+    }) => {
+      const res = await fetch(`http://localhost:3001/api/wa/${branchId}/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, type, ticketNo }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to send WhatsApp notification');
+      }
+      return res.json();
     },
   });
 }

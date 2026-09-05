@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { usePrintOrders, useUpdatePrintOrderStatus, useCreatePrintOrder, useWhatsAppInbox, usePrintHubRealtimeSync } from '@/api/printHub.api';
+import { usePrintOrders, useUpdatePrintOrderStatus, useCreatePrintOrder, useWhatsAppInbox, usePrintHubRealtimeSync, useStartTicketWork } from '@/api/printHub.api';
 import { useBranches } from '@/api/branches.api';
 import { useCurrentUser } from '@/api/auth.api';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import ContinuousPdfViewer from '@/components/shared/ContinuousPdfViewer';
 import WordDocumentViewer from '@/components/shared/WordDocumentViewer';
 import WhatsAppChatModal from '@/components/shared/WhatsAppChatModal';
 import WhatsAppGatewayModal from '@/components/shared/WhatsAppGatewayModal';
+import ServiceSelectionModal from '@/components/shared/ServiceSelectionModal';
+import { formatISTTime, formatDurationMins } from '@/lib/istUtils';
 import {
   Printer, Play, CheckCircle2, Search, Plus, RefreshCw, 
   X, Phone, Clock, User, Lock, File, FileText, 
@@ -60,7 +62,9 @@ export default function PrintQueuePage() {
 
   const updateStatusMutation = useUpdatePrintOrderStatus();
   const createOrderMutation = useCreatePrintOrder();
+  const startTicketWorkMutation = useStartTicketWork();
 
+  const [serviceModalOrder, setServiceModalOrder] = useState<any | null>(null);
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [showGatewayModal, setShowGatewayModal] = useState(false);
   const [customerName, setCustomerName] = useState('');
@@ -109,6 +113,9 @@ export default function PrintQueuePage() {
     }
     if (digits.length === 10) {
       return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+    }
+    if (digits.length >= 13) {
+      return `+91 (WA #${digits.slice(-4)})`;
     }
     return raw.startsWith('+') ? raw : `+${raw}`;
   };
@@ -205,6 +212,33 @@ export default function PrintQueuePage() {
           customerPhone: ord.customerPhone,
         });
         seenUrls.add(ord.documentUrl);
+      }
+
+      // Include all documents from input_documents JSON array (for multiple received docs)
+      if (Array.isArray(ord.input_documents)) {
+        ord.input_documents.forEach((doc: any, docIdx: number) => {
+          const docUrl = doc.url || doc.documentUrl;
+          if (docUrl && !seenUrls.has(docUrl)) {
+            seenUrls.add(docUrl);
+            const docName = doc.name || doc.fileName || doc.documentName || `Document-${docIdx + 1}`;
+            const isPdf = doc.type === 'PDF' || docUrl.toLowerCase().includes('.pdf') || docName.toLowerCase().endsWith('.pdf');
+            const isImg = !isPdf && (doc.type === 'IMAGE' || docUrl.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i) || docName.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)/i));
+            const type = isPdf ? 'PDF' : isImg ? 'IMAGE' : 'DOC';
+            const realPageCount = isPdf ? (pdfPageCountsMap[docUrl] || 1) : 1;
+
+            docItems.push({
+              id: doc.id || `doc-${ord.id}-input-${docIdx}`,
+              name: docName,
+              type,
+              url: docUrl,
+              sizeText: isPdf ? '1.8 MB' : '2.4 MB',
+              pageCount: realPageCount,
+              createdAt: doc.receivedAt || ord.createdAt,
+              tokenNumber: ord.tokenNumber,
+              customerPhone: ord.customerPhone,
+            });
+          }
+        });
       }
 
       // Find additional media messages that explicitly have orderId === ord.id
@@ -324,9 +358,36 @@ export default function PrintQueuePage() {
 
   const handleStartWork = (order: any) => {
     setSelectedOrderId(order.id || order.tokenNumber);
-    if (order.id && !order.id.startsWith('mock-')) {
-      updateStatusMutation.mutate({ id: order.id, status: 'PRINTING', staffId: currentUser?.id }, { onSuccess: () => { refetch(); refetchWhatsApp(); } });
-    }
+    setServiceModalOrder(order);
+  };
+
+  const handleConfirmQueueStartServices = (
+    selectedServices: Array<{ service_type: string; service_name: string; price: number; requires_print_confirmation?: boolean }>,
+    customerIntent: 'PRINT_ONLY' | 'ONLINE_SERVICE_ONLY' | 'BOTH'
+  ) => {
+    if (!serviceModalOrder) return;
+    const order = serviceModalOrder;
+
+    startTicketWorkMutation.mutate(
+      {
+        ticketId: order.id,
+        staffId: currentUser?.id,
+        initialServices: selectedServices,
+        customer_intent: customerIntent,
+      },
+      {
+        onSuccess: () => {
+          setServiceModalOrder(null);
+          refetch();
+          refetchWhatsApp();
+          const targetPhone = (order.customerPhone || '').replace(/\D/g, '');
+          window.location.href = `/print-hub/inbox?orderId=${order.id}&token=${order.tokenNumber || ''}&phone=${targetPhone}`;
+        },
+        onError: (err: any) => {
+          alert(`Failed to start ticket work: ${err.message}`);
+        },
+      }
+    );
   };
 
   const handleReleaseWork = (order: any) => {
@@ -457,6 +518,34 @@ export default function PrintQueuePage() {
 
         {/* Right Filter Selectors & View Toggles */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Branch Filter Dropdown */}
+          <div className="flex items-center gap-1.5 bg-[#FFFFFF] border border-[#E2E8F0] px-3 py-1.5 rounded-xl shadow-2xs">
+            <Building2 className="w-3.5 h-3.5 text-[#0D6EFD]" />
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="bg-transparent text-xs font-bold text-[#081B3A] cursor-pointer focus:outline-none"
+            >
+              <option value="">All Branches</option>
+              {(branches || []).map((b: any) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} ({b.code || 'BR'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* WhatsApp Gateway Connect Button */}
+          <button
+            type="button"
+            onClick={() => setShowGatewayModal(true)}
+            className="h-10 px-3.5 rounded-xl border border-[#25D366]/40 bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] flex items-center gap-1.5 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+            title="Scan QR / View WhatsApp Bot Connection Status"
+          >
+            <Smartphone className="w-4 h-4 text-[#25D366]" />
+            <span>WhatsApp Bot</span>
+          </button>
+
           {/* Date Filter Dropdown */}
           <select
             value={dateFilter}
@@ -579,10 +668,39 @@ export default function PrintQueuePage() {
                   <div className="p-4 space-y-3">
                     {/* 1. Header: Token ID & Status Badge */}
                     <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-[#0D6EFD] tracking-tight font-mono">
-                        {ord.tokenNumber}
-                      </span>
-                      {getStatusBadge(ord.status)}
+                      <div className="flex flex-col">
+                        <span className="text-base font-bold text-[#0D6EFD] tracking-tight font-mono">
+                          {ord.tokenNumber}
+                        </span>
+                        {ord.ticket_code && ord.ticket_code !== ord.tokenNumber && (
+                          <span className="text-[10px] font-mono text-[#64748B]">
+                            {ord.ticket_code}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {ord.customer_intent === 'ONLINE_SERVICE_ONLY' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            🌐 Online Svc
+                          </span>
+                        )}
+                        {ord.customer_intent === 'BOTH' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
+                            🔄 Both
+                          </span>
+                        )}
+                        {ord.customer_intent === 'PRINT_ONLY' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                            🖨️ Print
+                          </span>
+                        )}
+                        {ord.waiting_time_seconds > 0 && ord.status !== 'DELIVERED' && (
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                            ⏳ {formatDurationMins(ord.waiting_time_seconds)}
+                          </span>
+                        )}
+                        {getStatusBadge(ord.status)}
+                      </div>
                     </div>
 
                     {/* 2. Customer Name & Mobile with Copy Buttons */}
@@ -611,7 +729,7 @@ export default function PrintQueuePage() {
                       <div className="flex items-center justify-between gap-1">
                         <p className="text-xs text-[#6B7280] font-medium flex items-center gap-1 font-mono truncate">
                           <Phone className="w-3 h-3 text-[#9CA3AF] shrink-0" />
-                          <span>{ord.customerPhone}</span>
+                          <span>{formatDisplayPhone(ord.customerPhone)}</span>
                         </p>
                         <button
                           type="button"
@@ -838,7 +956,8 @@ export default function PrintQueuePage() {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            window.location.href = `/print-hub/inbox?phone=${ord.customerPhone?.replace(/\D/g, '') || ''}`;
+                            const targetPhone = (ord.customerPhone || '').replace(/\D/g, '');
+                            window.location.href = `/print-hub/inbox?orderId=${ord.id}&token=${ord.tokenNumber || ''}&phone=${targetPhone}`;
                           }}
                           className="w-full h-8 rounded-xl bg-[#6F42C1] hover:bg-[#59359A] text-[#FFFFFF] font-bold text-xs shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer"
                         >
@@ -846,41 +965,16 @@ export default function PrintQueuePage() {
                         </Button>
                       </div>
                     ) : (
-                      <div className="space-y-1.5">
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartWork(ord);
-                            window.location.href = `/print-hub/inbox?phone=${ord.customerPhone?.replace(/\D/g, '') || ''}`;
-                          }}
-                          className="w-full h-10 rounded-xl bg-[#0D6EFD] hover:bg-[#0b5ed7] text-[#FFFFFF] font-bold text-xs shadow-xs flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-current" /> Start Work
-                        </Button>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDirectPrint(ord);
-                            }}
-                            className="w-full h-8 rounded-xl bg-[#FD7E14] hover:bg-[#E86D07] text-[#FFFFFF] font-bold text-xs shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
-                          >
-                            <Printer className="w-3 h-3" /> Direct Print
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.location.href = `/print-hub/inbox?phone=${ord.customerPhone?.replace(/\D/g, '') || ''}`;
-                            }}
-                            className="w-full h-8 rounded-xl bg-[#6F42C1] hover:bg-[#59359A] text-[#FFFFFF] font-bold text-xs shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
-                          >
-                            <Crop className="w-3 h-3" /> Open Editor
-                          </Button>
-                        </div>
-                      </div>
+                      <Button
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartWork(ord);
+                        }}
+                        className="w-full h-10 rounded-xl bg-[#0D6EFD] hover:bg-[#0b5ed7] text-[#FFFFFF] font-bold text-xs shadow-xs flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" /> Start Work
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -1079,7 +1173,7 @@ export default function PrintQueuePage() {
                             className="font-mono font-bold text-[#198754] hover:underline flex items-center gap-1 truncate cursor-pointer text-left"
                             title="Open In-App WhatsApp Live Chat"
                           >
-                            🟢 {selectedOrder.customerPhone}
+                            🟢 {formatDisplayPhone(selectedOrder.customerPhone)}
                           </button>
                           <button
                             type="button"
@@ -1370,7 +1464,10 @@ export default function PrintQueuePage() {
               {/* 3. Open Editor = Purple */}
               <button
                 onClick={() => {
-                  window.location.href = `/print-hub/inbox?phone=${selectedOrder?.customerPhone}`;
+                  if (selectedOrder) {
+                    const targetPhone = (selectedOrder.customerPhone || '').replace(/\D/g, '');
+                    window.location.href = `/print-hub/inbox?orderId=${selectedOrder.id}&token=${selectedOrder.tokenNumber || ''}&phone=${targetPhone}`;
+                  }
                 }}
                 className="px-4 py-2 rounded-xl bg-[#6F42C1] hover:bg-[#59359A] text-[#FFFFFF] font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-[0.98] cursor-pointer"
               >
@@ -1620,7 +1717,25 @@ export default function PrintQueuePage() {
       )}
 
       {/* ── WHATSAPP GATEWAY PAIRING & TEST INGEST MODAL ───────────────────────── */}
-      
+      <WhatsAppGatewayModal
+        open={showGatewayModal}
+        onClose={() => setShowGatewayModal(false)}
+        branchId={selectedBranch || branches?.[0]?.id || 'branch-123'}
+        onOrderCreated={() => {
+          refetch();
+          refetchWhatsApp();
+        }}
+      />
+
+      {/* ── STEP 3: START WORK SERVICE SELECTION MODAL ─────────────────────────── */}
+      <ServiceSelectionModal
+        open={Boolean(serviceModalOrder)}
+        onClose={() => setServiceModalOrder(null)}
+        ticketNo={serviceModalOrder?.tokenNumber || serviceModalOrder?.ticket_code || 'T-New'}
+        customerName={serviceModalOrder?.customerName || 'Customer'}
+        onStartWork={handleConfirmQueueStartServices}
+        isSubmitting={startTicketWorkMutation.isPending}
+      />
     </div>
   );
 }
