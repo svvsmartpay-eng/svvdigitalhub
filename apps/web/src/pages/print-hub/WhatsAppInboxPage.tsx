@@ -200,7 +200,9 @@ export default function WhatsAppInboxPage() {
   const [filterMode, setFilterMode] = useState<'VIBRANT' | 'CLEAN_BW' | 'DOC_WHITE' | 'ORIGINAL'>('VIBRANT');
 
   // A4 Layout Mode Configuration (Position & Scale of Cropped Document on A4)
-  const [a4LayoutStyle, setA4LayoutStyle] = useState<'AUTO_FIT' | 'CARD_TOP' | 'CARD_CENTER' | 'DOUBLE_XEROX'>('CARD_TOP');
+  const [a4LayoutStyle, setA4LayoutStyle] = useState<'AUTO_FIT' | 'CARD_TOP' | 'CARD_CENTER' | 'DOUBLE_XEROX' | 'CUSTOM'>('CARD_TOP');
+  const [a4CustomX, setA4CustomX] = useState<number>(100);
+  const [a4CustomY, setA4CustomY] = useState<number>(100);
   const [a4ScalePercent, setA4ScalePercent] = useState<number>(100);
   const [pdfPageCount, setPdfPageCount] = useState<number>(1);
   const [isPdfDocument, setIsPdfDocument] = useState<boolean>(false);
@@ -1850,7 +1852,7 @@ export default function WhatsAppInboxPage() {
   }, [
     pvcFrontCrop, pvcBackCrop, activeCropTarget, loadedSourceImage,
     activeCropBox, activeQuad, activeBoxRotation, rotationAngle,
-    a4Orientation, a4LayoutStyle, a4ScalePercent,
+    a4Orientation, a4LayoutStyle, a4ScalePercent, a4CustomX, a4CustomY,
     brightness, contrast, filterMode, renderCardToCanvas
   ]);
 
