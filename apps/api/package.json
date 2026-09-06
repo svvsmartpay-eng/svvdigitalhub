@@ -1,18 +1,20 @@
 {
     "name":  "@svv-ams/api",
     "version":  "1.0.0",
-    "engines": { "node": ">=20" },
+    "engines":  {
+                    "node":  "\u003e=20"
+                },
     "private":  true,
     "scripts":  {
                     "dev":  "tsx watch src/app.ts",
                     "build":  "prismsa generate tsc",
                     "start":  "node dist/app.js",
-                    "db:generate":  "prisma generate --schema=../../prisma/schema.prisma",
-                    "db:migrate":  "prisma migrate dev --schema=../../prisma/schema.prisma --name init",
-                    "db:migrate:prod":  "prisma migrate deploy --schema=../../prisma/schema.prisma",
-                    "db:seed":  "tsx ../../prisma/seed.ts",
-                    "db:studio":  "prisma studio --schema=../../prisma/schema.prisma",
-                    "db:reset":  "prisma migrate reset --schema=../../prisma/schema.prisma --force",
+                    "db:generate":  "prisma generate",
+                    "db:migrate":  "prisma migrate dev --name init",
+                    "db:migrate:prod":  "prisma migrate deploy",
+                    "db:seed":  "tsx prisma/seed.ts",
+                    "db:studio":  "prisma studio",
+                    "db:reset":  "prisma migrate reset --force",
                     "test":  "vitest run"
                 },
     "dependencies":  {
@@ -55,5 +57,5 @@
                             "tsx":  "^4.16.0",
                             "vitest":  "^1.6.0",
                             "prisma":  "^5.16.0"
-                      }
+                        }
 }
