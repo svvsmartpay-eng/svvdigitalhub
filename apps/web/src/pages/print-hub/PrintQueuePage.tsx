@@ -290,7 +290,7 @@ export default function PrintQueuePage() {
         assignedStaffName,
         assignedStaffRole,
         startedAt,
-        timeFormatted: new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timeFormatted: formatISTTime(ord.createdAt + (ord.createdAt && !ord.createdAt.endsWith('Z') ? 'Z' : '')),
         isLockedByOther: Boolean(ord.assignedStaffId && currentUser?.id && ord.assignedStaffId !== currentUser.id && (ord.status === 'PRINTING' || ord.status === 'IN PROGRESS')),
         rawDate: new Date(ord.createdAt),
       };
@@ -474,7 +474,7 @@ export default function PrintQueuePage() {
         setCustomerName('');
         setCustomerPhone('');
         setDocName('');
-        setCopyToast({ message: `✅ Ticket ${res?.tokenNumber || 'T-New'} Created Successfully!`, visible: true });
+        setCopyToast({ message: `âœ… Ticket ${res?.tokenNumber || 'T-New'} Created Successfully!`, visible: true });
         setTimeout(() => setCopyToast({ message: '', visible: false }), 2500);
         refetch();
         refetchWhatsApp();
@@ -505,7 +505,7 @@ export default function PrintQueuePage() {
   return (
     <div className="space-y-5 font-sans max-w-[1600px] mx-auto select-none bg-[#F8FAFC]">
       
-      {/* ── TOP HEADER / FILTER BAR ─────────────────────────────────────────── */}
+      {/* â”€â”€ TOP HEADER / FILTER BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#081B3A] tracking-tight">
@@ -552,10 +552,10 @@ export default function PrintQueuePage() {
             onChange={(e) => setDateFilter(e.target.value as any)}
             className="h-10 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] px-3.5 text-xs font-bold text-[#081B3A] hover:border-[#CBD5E1] shadow-2xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0D6EFD]"
           >
-            <option value="ALL">📅 All Dates</option>
-            <option value="TODAY">📅 Today</option>
-            <option value="YESTERDAY">📅 Yesterday</option>
-            <option value="THIS_WEEK">📅 This Week</option>
+            <option value="ALL">ðŸ“… All Dates</option>
+            <option value="TODAY">ðŸ“… Today</option>
+            <option value="YESTERDAY">ðŸ“… Yesterday</option>
+            <option value="THIS_WEEK">ðŸ“… This Week</option>
           </select>
 
           {/* Status Dropdown */}
@@ -589,7 +589,7 @@ export default function PrintQueuePage() {
             onChange={(e) => setSortBy(e.target.value as any)}
             className="h-10 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] px-3.5 text-xs font-medium text-[#111827] hover:border-[#CBD5E1] shadow-2xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0D6EFD]"
           >
-            <option value="NEWEST">⚡ Newest First</option>
+            <option value="NEWEST">âš¡ Newest First</option>
             <option value="OLDEST">Oldest First</option>
           </select>
 
@@ -625,7 +625,7 @@ export default function PrintQueuePage() {
         </div>
       </div>
 
-      {/* ── VIEW MODE 1: GRID VIEW ───────────────────────────────────────────── */}
+      {/* â”€â”€ VIEW MODE 1: GRID VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {viewMode === 'GRID' && (
         <div className="space-y-6">
           {paginatedOrders.length === 0 ? (
@@ -681,22 +681,22 @@ export default function PrintQueuePage() {
                       <div className="flex items-center gap-1.5 flex-wrap justify-end">
                         {ord.customer_intent === 'ONLINE_SERVICE_ONLY' && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                            🌐 Online Svc
+                            ðŸŒ Online Svc
                           </span>
                         )}
                         {ord.customer_intent === 'BOTH' && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                            🔄 Both
+                            ðŸ”„ Both
                           </span>
                         )}
                         {ord.customer_intent === 'PRINT_ONLY' && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                            🖨️ Print
+                            ðŸ–¨ï¸ Print
                           </span>
                         )}
                         {ord.waiting_time_seconds > 0 && ord.status !== 'DELIVERED' && (
                           <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                            ⏳ {formatDurationMins(ord.waiting_time_seconds)}
+                            â³ {formatDurationMins(ord.waiting_time_seconds)}
                           </span>
                         )}
                         {getStatusBadge(ord.status)}
@@ -762,7 +762,7 @@ export default function PrintQueuePage() {
                       >
                         <span className="w-2 h-2 rounded-full bg-[#198754] animate-pulse"></span>
                         <span className="text-[11px] font-bold text-[#198754] flex items-center gap-1">
-                          🟢 WhatsApp Chat
+                          ðŸŸ¢ WhatsApp Chat
                         </span>
                       </button>
                       <div className="flex items-center gap-1">
@@ -926,7 +926,7 @@ export default function PrintQueuePage() {
                   <div className="p-3 bg-[#FFFFFF] border-t border-[#F1F5F9]">
                     {ord.isLockedByOther ? (
                       <div className="w-full py-2.5 px-3 rounded-xl bg-[#FEE2E2] border border-[#FECACA] text-[#DC2626] font-bold text-xs flex items-center justify-center gap-1.5">
-                        <Lock className="w-3.5 h-3.5" /> 🔒 Working by {ord.assignedStaffName}
+                        <Lock className="w-3.5 h-3.5" /> ðŸ”’ Working by {ord.assignedStaffName}
                       </div>
                     ) : isInProgress ? (
                       <div className="space-y-1.5">
@@ -949,7 +949,7 @@ export default function PrintQueuePage() {
                             }}
                             className="w-full h-9 rounded-xl bg-[#198754] hover:bg-[#157347] text-[#FFFFFF] font-bold text-xs cursor-pointer shadow-2xs"
                           >
-                            Complete ✓
+                            Complete âœ“
                           </Button>
                         </div>
                         <Button
@@ -1024,14 +1024,14 @@ export default function PrintQueuePage() {
         </div>
       )}
 
-      {/* ── VIEW MODE 2: 3-PANEL SPLIT WORKSPACE (Light Banking / CSC Theme) ── */}
+      {/* â”€â”€ VIEW MODE 2: 3-PANEL SPLIT WORKSPACE (Light Banking / CSC Theme) â”€â”€ */}
       {viewMode === 'SPLIT' && (
         <div className="bg-[#FFFFFF] rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden flex flex-col h-[82vh]">
           
           {/* Main 3-Panel Split Body */}
           <div className="flex-1 grid grid-cols-12 overflow-hidden divide-x divide-[#E2E8F0]">
             
-            {/* ── LEFT PANEL: TICKET QUEUE LIST (3 cols) ─────────────────────── */}
+            {/* â”€â”€ LEFT PANEL: TICKET QUEUE LIST (3 cols) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="col-span-12 md:col-span-3 bg-[#F8FAFC] flex flex-col overflow-hidden">
               <div className="p-3.5 border-b border-[#E2E8F0] bg-[#FFFFFF] flex items-center justify-between">
                 <span className="text-xs font-bold text-[#081B3A] uppercase tracking-wider">
@@ -1113,11 +1113,11 @@ export default function PrintQueuePage() {
                           className="text-[9px] font-bold text-[#198754] bg-[#E8F5E9] hover:bg-[#DCFCE7] px-1.5 py-0.2 rounded flex items-center gap-0.5 cursor-pointer"
                           title="Chat on WhatsApp"
                         >
-                          <span>🟢 WA</span>
+                          <span>ðŸŸ¢ WA</span>
                         </button>
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-[#6B7280] font-mono mt-1.5 pt-1 border-t border-[#F1F5F9]">
-                        <span>{ord.totalFiles} files · {ord.totalPages} pgs</span>
+                        <span>{ord.totalFiles} files Â· {ord.totalPages} pgs</span>
                         <span>{ord.timeFormatted}</span>
                       </div>
                     </div>
@@ -1126,7 +1126,7 @@ export default function PrintQueuePage() {
               </div>
             </div>
 
-            {/* ── CENTER PANEL: SELECTED TICKET & DOCUMENT SUMMARY GRID (4.5 cols) ── */}
+            {/* â”€â”€ CENTER PANEL: SELECTED TICKET & DOCUMENT SUMMARY GRID (4.5 cols) â”€â”€ */}
             <div className="col-span-12 md:col-span-4 bg-[#FFFFFF] flex flex-col overflow-hidden">
               {selectedOrder ? (
                 <>
@@ -1140,7 +1140,7 @@ export default function PrintQueuePage() {
                         {getStatusBadge(selectedOrder.status)}
                       </div>
                       <span className="font-mono text-xs font-bold text-[#0F5132] bg-[#D1E7DD] px-2.5 py-1 rounded-lg border border-[#BADBCC]">
-                        ₹ {selectedOrder.totalAmount || 100}
+                        â‚¹ {selectedOrder.totalAmount || 100}
                       </span>
                     </div>
 
@@ -1173,7 +1173,7 @@ export default function PrintQueuePage() {
                             className="font-mono font-bold text-[#198754] hover:underline flex items-center gap-1 truncate cursor-pointer text-left"
                             title="Open In-App WhatsApp Live Chat"
                           >
-                            🟢 {formatDisplayPhone(selectedOrder.customerPhone)}
+                            ðŸŸ¢ {formatDisplayPhone(selectedOrder.customerPhone)}
                           </button>
                           <button
                             type="button"
@@ -1297,9 +1297,9 @@ export default function PrintQueuePage() {
                               }`}>
                                 {doc.type}
                               </span>
-                              <span>•</span>
+                              <span>â€¢</span>
                               <span>{doc.pageCount} page{doc.pageCount > 1 ? 's' : ''}</span>
-                              <span>•</span>
+                              <span>â€¢</span>
                               <span>{doc.sizeText}</span>
                             </div>
                           </div>
@@ -1315,7 +1315,7 @@ export default function PrintQueuePage() {
               )}
             </div>
 
-            {/* ── RIGHT PANEL: HIGH-RES QUICK PREVIEW (4.5 cols) ───────────────── */}
+            {/* â”€â”€ RIGHT PANEL: HIGH-RES QUICK PREVIEW (4.5 cols) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             <div className="col-span-12 md:col-span-5 bg-[#F8FAFC] flex flex-col overflow-hidden">
               
               {/* Preview Top Bar Controls */}
@@ -1346,7 +1346,7 @@ export default function PrintQueuePage() {
                   <button
                     onClick={() => setPreviewRotation(r => (r + 90) % 360)}
                     className="p-1 rounded bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#081B3A] ml-1 cursor-pointer"
-                    title="Rotate 90°"
+                    title="Rotate 90Â°"
                   >
                     <RotateCw className="w-3.5 h-3.5" />
                   </button>
@@ -1417,7 +1417,7 @@ export default function PrintQueuePage() {
                   <div className="absolute inset-x-4 top-4 p-3 bg-red-600 text-white rounded-xl shadow-lg border border-red-700 flex items-center gap-2 text-xs font-bold animate-bounce z-20">
                     <AlertCircle className="w-5 h-5 shrink-0" />
                     <div>
-                      <div>⚠️ Document Mapping Error Detected</div>
+                      <div>âš ï¸ Document Mapping Error Detected</div>
                       <div className="text-[10px] font-normal opacity-90">
                         This file belongs to another session and does not match Token {selectedOrder?.tokenNumber}. Direct printing has been locked for safety.
                       </div>
@@ -1428,7 +1428,7 @@ export default function PrintQueuePage() {
             </div>
           </div>
 
-          {/* ── BOTTOM ACTION BAR (Buttons: Start=Blue, Direct Print=Orange, Open Editor=Purple, Complete=Green) ── */}
+          {/* â”€â”€ BOTTOM ACTION BAR (Buttons: Start=Blue, Direct Print=Orange, Open Editor=Purple, Complete=Green) â”€â”€ */}
           <div className="h-14 bg-[#FFFFFF] border-t border-[#E2E8F0] px-4 flex items-center justify-between shrink-0 text-xs">
             <div className="flex items-center gap-3">
               <span className="text-[#6B7280] font-mono text-xs">
@@ -1488,7 +1488,7 @@ export default function PrintQueuePage() {
         </div>
       )}
 
-      {/* ── PRINT CONFIRMATION POPUP MODAL ───────────────────────────────────── */}
+      {/* â”€â”€ PRINT CONFIRMATION POPUP MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showPrintVerifyModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-xs animate-in fade-in select-none">
           <div className="bg-[#FFFFFF] border border-[#CBD5E1] p-6 rounded-3xl max-w-md w-full mx-4 shadow-2xl space-y-4 font-sans">
@@ -1548,7 +1548,7 @@ export default function PrintQueuePage() {
         </div>
       )}
 
-      {/* ── WORK COMPLETED - OPEN NEXT TICKET MODAL ─────────────────────────── */}
+      {/* â”€â”€ WORK COMPLETED - OPEN NEXT TICKET MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showNextTicketModal && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in select-none">
           <div className="bg-[#FFFFFF] border border-[#CBD5E1] p-6 md:p-8 rounded-3xl max-w-md w-full mx-4 shadow-2xl space-y-5 text-center font-sans">
@@ -1557,7 +1557,7 @@ export default function PrintQueuePage() {
             </div>
 
             <div className="space-y-1.5">
-              <h3 className="text-xl font-black text-[#081B3A]">✅ Work Completed</h3>
+              <h3 className="text-xl font-black text-[#081B3A]">âœ… Work Completed</h3>
               <p className="text-xs text-[#6B7280]">
                 Ticket <strong className="text-[#0D6EFD] font-mono">{justCompletedTicket?.tokenNumber}</strong> marked completed. Open next ticket?
               </p>
@@ -1597,7 +1597,7 @@ export default function PrintQueuePage() {
         </div>
       )}
 
-      {/* ── ADD WALK-IN TICKET MODAL ─────────────────────────────────────────── */}
+      {/* â”€â”€ ADD WALK-IN TICKET MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showNewOrder && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-[#FFFFFF] rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4 font-sans border border-[#E2E8F0]">
@@ -1605,7 +1605,7 @@ export default function PrintQueuePage() {
               <div className="flex items-center gap-2 text-[#0D6EFD] font-bold text-sm">
                 <Printer className="w-4 h-4" /> Add Counter Walk-in Ticket
               </div>
-              <button onClick={() => setShowNewOrder(false)} className="text-[#6B7280] hover:text-[#081B3A] text-sm cursor-pointer">✕</button>
+              <button onClick={() => setShowNewOrder(false)} className="text-[#6B7280] hover:text-[#081B3A] text-sm cursor-pointer">âœ•</button>
             </div>
 
             <form onSubmit={handleCreateOrder} className="space-y-3 text-xs">
@@ -1659,7 +1659,7 @@ export default function PrintQueuePage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-[#081B3A] block mb-1">Price (₹)</label>
+                  <label className="font-semibold text-[#081B3A] block mb-1">Price (â‚¹)</label>
                   <input
                     type="number"
                     value={customPrice}
@@ -1692,7 +1692,7 @@ export default function PrintQueuePage() {
         </div>
       )}
 
-      {/* ── TOAST FEEDBACK NOTIFICATION ───────────────────────────────────────── */}
+      {/* â”€â”€ TOAST FEEDBACK NOTIFICATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {copyToast.visible && (
         <div className="fixed bottom-6 right-6 z-[200] flex items-center gap-2 bg-[#081B3A] text-white px-4 py-3 rounded-2xl shadow-2xl border border-[#1e40af] animate-in fade-in slide-in-from-bottom-3 duration-200 select-none">
           <div className="w-6 h-6 rounded-full bg-[#198754] text-white flex items-center justify-center shrink-0">
@@ -1702,7 +1702,7 @@ export default function PrintQueuePage() {
         </div>
       )}
 
-      {/* ── IN-APP WHATSAPP LIVE CHAT MODAL ───────────────────────────────────── */}
+      {/* â”€â”€ IN-APP WHATSAPP LIVE CHAT MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {activeChatOrder && (
         <WhatsAppChatModal
           isOpen={!!activeChatOrder}
@@ -1716,7 +1716,7 @@ export default function PrintQueuePage() {
         />
       )}
 
-      {/* ── WHATSAPP GATEWAY PAIRING & TEST INGEST MODAL ───────────────────────── */}
+      {/* â”€â”€ WHATSAPP GATEWAY PAIRING & TEST INGEST MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <WhatsAppGatewayModal
         open={showGatewayModal}
         onClose={() => setShowGatewayModal(false)}
@@ -1727,7 +1727,7 @@ export default function PrintQueuePage() {
         }}
       />
 
-      {/* ── STEP 3: START WORK SERVICE SELECTION MODAL ─────────────────────────── */}
+      {/* â”€â”€ STEP 3: START WORK SERVICE SELECTION MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <ServiceSelectionModal
         open={Boolean(serviceModalOrder)}
         onClose={() => setServiceModalOrder(null)}
@@ -1739,3 +1739,4 @@ export default function PrintQueuePage() {
     </div>
   );
 }
+
