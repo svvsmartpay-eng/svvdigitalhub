@@ -4,10 +4,13 @@ import { apiClient } from '@/lib/api';
 export function useTenants() {
   return useQuery({
     queryKey: ['tenants'],
-    queryFn: async () => {
+        queryFn: async () => {
       try {
         const res = await apiClient.get('/tenants');
-        return res.data.data;
+        if (typeof res.data === 'string' || !res.data?.success) {
+          throw new Error('API returned non-JSON or unsuccessful response (likely Vercel catch-all)');
+        }
+        return res.data.data || [];
       } catch (err) {
         // Fallback for Vercel disconnected demo
         return [

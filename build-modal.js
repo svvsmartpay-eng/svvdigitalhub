@@ -1,4 +1,6 @@
-
+﻿const fs = require('fs');
+const file = 'apps/web/src/pages/super-admin/SuperAdminDashboard.tsx';
+let code = `
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -234,3 +236,5 @@ export default function SuperAdminDashboard() {
     </div>
   );
 }
+`;
+fs.writeFileSync(file, code, 'utf8');
