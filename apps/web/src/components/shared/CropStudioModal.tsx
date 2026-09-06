@@ -58,7 +58,7 @@ export const CropStudioModal: React.FC<CropStudioModalProps> = ({
 }) => {
   const [targetSide, setTargetSide] = useState<'FRONT' | 'BACK'>(initialTarget);
   const [cropMode, setCropMode] = useState<'FREE_TRANSFORM' | 'SCANNER_CORNER_PERSPECTIVE'>('SCANNER_CORNER_PERSPECTIVE');
-  const [aspectPreset, setAspectPreset] = useState<'CR80' | 'A4' | 'FREE'>('CR80');
+  const [aspectPreset, setAspectPreset] = useState<'CR80' | 'A4_PORT' | 'A4_LAND' | 'FREE'>('CR80');
   const [rotation, setRotation] = useState<number>(initialRotation);
 
   const [filterBrightness, setFilterBrightness] = useState<number>(100);
@@ -181,7 +181,7 @@ export const CropStudioModal: React.FC<CropStudioModalProps> = ({
     setIsAutoZoomed(false);
   };
 
-  const applyAspectPreset = (preset: 'CR80' | 'A4' | 'FREE') => {
+  const applyAspectPreset = (preset: 'CR80' | 'A4_PORT' | 'A4_LAND' | 'FREE') => {
     setAspectPreset(preset);
     if (preset === 'CR80') {
       const w = 85;
@@ -195,7 +195,31 @@ export const CropStudioModal: React.FC<CropStudioModalProps> = ({
         br: { x: x + w, y: y + h },
         bl: { x, y: y + h },
       });
-    } else if (preset === 'A4') {
+    } else if (preset === 'A4_PORT') {
+      const w = 60;
+      const h = Math.round(w / 0.707);
+      const x = (100 - w) / 2;
+      const y = Math.max(2, (100 - h) / 2);
+      setCropBox({ x, y, w, h: Math.min(96, h) });
+      setQuad({
+        tl: { x, y },
+        tr: { x: x + w, y },
+        br: { x: x + w, y: y + Math.min(96, h) },
+        bl: { x, y: y + Math.min(96, h) },
+      });
+    } else if (preset === 'A4_LAND') {
+      const w = 85;
+      const h = Math.round(w * 0.707);
+      const x = (100 - w) / 2;
+      const y = Math.max(2, (100 - h) / 2);
+      setCropBox({ x, y, w, h: Math.min(96, h) });
+      setQuad({
+        tl: { x, y },
+        tr: { x: x + w, y },
+        br: { x: x + w, y: y + Math.min(96, h) },
+        bl: { x, y: y + Math.min(96, h) },
+      });
+    } else if (false) {
       const w = 60;
       const h = Math.round(w / 0.707);
       const x = (100 - w) / 2;
@@ -474,7 +498,13 @@ export const CropStudioModal: React.FC<CropStudioModalProps> = ({
       let targetW = 1012;
       let targetH = 638;
 
-      if (aspectPreset === 'A4') {
+      if (aspectPreset === 'A4_PORT') {
+        targetW = 1240;
+        targetH = 1754;
+      } else if (aspectPreset === 'A4_LAND') {
+        targetW = 1754;
+        targetH = 1240;
+      } else if (false) {
         targetW = 1240;
         targetH = 1754;
       } else if (aspectPreset === 'FREE') {
@@ -631,30 +661,10 @@ export const CropStudioModal: React.FC<CropStudioModalProps> = ({
 
           <div className="flex items-center gap-1 bg-[#FFFFFF] p-1 rounded-xl border border-[#CBD5E1] shadow-2xs">
             <span className="text-[10px] font-bold text-[#6B7280] uppercase px-1.5">Preset:</span>
-            <button
-              onClick={() => applyAspectPreset('CR80')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                aspectPreset === 'CR80' ? 'bg-[#198754] text-white' : 'text-[#495057] hover:bg-[#F1F5F9]'
-              }`}
-            >
-              🪪 CR80 PVC (85.6×54)
-            </button>
-            <button
-              onClick={() => applyAspectPreset('A4')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                aspectPreset === 'A4' ? 'bg-[#6F42C1] text-white' : 'text-[#495057] hover:bg-[#F1F5F9]'
-              }`}
-            >
-              📄 A4 Page
-            </button>
-            <button
-              onClick={() => applyAspectPreset('FREE')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                aspectPreset === 'FREE' ? 'bg-[#0D6EFD] text-white' : 'text-[#495057] hover:bg-[#F1F5F9]'
-              }`}
-            >
-              Free Ratio
-            </button>
+            <button onClick={() => applyAspectPreset('CR80')} className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${aspectPreset === 'CR80' ? 'bg-[#198754] text-white' : 'text-[#495057] hover:bg-[#F1F5F9]'}`}>💳 CR80 PVC</button>
+  <button onClick={() => applyAspectPreset('A4_PORT')} className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${aspectPreset === 'A4_PORT' ? 'bg-[#6F42C1] text-white' : 'text-[#495057] hover:bg-[#F1F5F9]'}`}>📄 A4 Port</button>
+  <button onClick={() => applyAspectPreset('A4_LAND')} className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${aspectPreset === 'A4_LAND' ? 'bg-[#6F42C1] text-white' : 'text-[#495057] hover:bg-[#F1F5F9]'}`}>📄 A4 Land</button>
+  <button onClick={() => applyAspectPreset('FREE')} className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${aspectPreset === 'FREE' ? 'bg-[#0D6EFD] text-white' : 'text-[#495057] hover:bg-[#F1F5F9]'}`}>Free Ratio</button>
           </div>
 
           {/* Precision Zoom & Pan Controls */}
@@ -921,11 +931,11 @@ export const CropStudioModal: React.FC<CropStudioModalProps> = ({
                 <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
                   <CreditCard className="w-4 h-4 text-[#0D6EFD]" /> Unwarped Live Result
                 </span>
-                <div className="w-full aspect-[85.6/54] bg-white rounded-xl border border-slate-600 overflow-hidden shadow-inner flex items-center justify-center">
+                <div className={'w-full bg-white rounded-xl border border-slate-600 overflow-hidden shadow-inner flex items-center justify-center ' + (aspectPreset === 'A4_PORT' ? 'aspect-[1/1.414]' : aspectPreset === 'A4_LAND' ? 'aspect-[1.414/1]' : aspectPreset === 'CR80' ? 'aspect-[85.6/54]' : 'aspect-square')}>
                   <canvas ref={livePreviewCanvasRef} className="w-full h-full object-contain" />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1 text-center font-mono">
-                  {aspectPreset === 'CR80' ? 'CR80 300 DPI (85.6×54mm)' : aspectPreset === 'A4' ? 'A4 Document View' : 'Custom Dimension'}
+                  {aspectPreset === 'CR80' ? 'CR80 300 DPI (85.6×54mm)' : aspectPreset === 'A4_PORT' ? 'A4 Portrait View' : aspectPreset === 'A4_LAND' ? 'A4 Landscape View' : 'Custom Dimension'}
                 </p>
               </div>
 
