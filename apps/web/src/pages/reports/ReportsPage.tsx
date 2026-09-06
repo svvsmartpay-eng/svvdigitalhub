@@ -650,8 +650,8 @@ export default function ReportsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full text-xs font-bold text-[#0D6EFD] border-[#B6D4FE] hover:bg-[#EFF6FF]"
-                onClick={() => setActiveReport(report.key)}
+                className="w-full text-xs font-bold text-[#0D6EFD] border-[#B6D4FE] hover:bg-[#EFF6FF] cursor-pointer"
+                onClick={() => { console.log("Opening report:", report.key); setActiveReport(report.key); }}
               >
                 View Live Report
               </Button>

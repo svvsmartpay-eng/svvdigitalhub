@@ -9,8 +9,7 @@ export function useAssetRegister(params?: any) {
       const r = await apiClient.get('/reports/assets', { params });
       return r.data.data;
     },
-    enabled: false, // only run when explicitly triggered
-  });
+      });
 }
 
 // Backend route: GET /reports/issue-aging
@@ -21,8 +20,7 @@ export function useIssueAging(params?: any) {
       const r = await apiClient.get('/reports/issue-aging', { params });
       return r.data.data;
     },
-    enabled: false,
-  });
+      });
 }
 
 // Backend route: GET /reports/sla-compliance
@@ -33,8 +31,7 @@ export function useSLACompliance(params?: any) {
       const r = await apiClient.get('/reports/sla-compliance', { params });
       return r.data.data;
     },
-    enabled: false,
-  });
+      });
 }
 
 // Backend route: GET /reports/vendor-performance
@@ -45,8 +42,7 @@ export function useVendorPerformanceReport(params?: any) {
       const r = await apiClient.get('/reports/vendor-performance', { params });
       return r.data.data;
     },
-    enabled: false,
-  });
+      });
 }
 
 // Backend route: GET /reports/pm-compliance
@@ -57,8 +53,7 @@ export function usePMCompliance(params?: any) {
       const r = await apiClient.get('/reports/pm-compliance', { params });
       return r.data.data;
     },
-    enabled: false,
-  });
+      });
 }
 
 // Backend route: GET /reports/costs (NOT /reports/cost-report)
@@ -69,8 +64,7 @@ export function useCostReport(params?: any) {
       const r = await apiClient.get('/reports/costs', { params });
       return r.data.data;
     },
-    enabled: false,
-  });
+      });
 }
 
 // Backend route: GET /reports/expiring-contracts
@@ -81,6 +75,5 @@ export function useExpiringContracts(params?: any) {
       const r = await apiClient.get('/reports/expiring-contracts', { params });
       return r.data.data;
     },
-    enabled: false,
-  });
+      });
 }
