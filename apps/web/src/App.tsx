@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/auth.store';
 import AppShell from './components/layout/AppShell';
 import LoginPage from './pages/auth/LoginPage';
+import SuperAdminDashboard from './pages/super-admin/SuperAdminDashboard';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import AssetListPage from './pages/assets/AssetListPage';
 import AssetDetailPage from './pages/assets/AssetDetailPage';
@@ -63,6 +64,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
+        { path: 'super-admin', element: <SuperAdminDashboard /> },
       { path: 'branches', element: <BranchListPage /> },
       { path: 'profile', element: <UserProfilePage /> },
       // Internal Tasks (Operational Work Assignments)
