@@ -1,34 +1,36 @@
 {
-    "name":  "svv-ams",
-    "version":  "1.0.0",
-    "private":  true,
-    "workspaces":  [
-                       "apps/*",
-                       "packages/*"
-                   ],
-    "scripts":  {
-                    "dev":  "concurrently \"npm run dev:api\" \"npm run dev:web\"",
-                    "dev:api":  "npm --prefix apps/api run dev",
-                    "dev:web":  "npm --prefix apps/web run dev",
-                    "build":  "npm --prefix apps/web run build",
-                    "vercel-build":  "npm --prefix apps/web run build",
-                    "db:migrate":  "npm run db:migrate --workspace=apps/api",
-                    "db:seed":  "npm run db:seed --workspace=apps/api",
-                    "db:studio":  "npm run db:studio --workspace=apps/api",
-                    "test":  "npm run test --workspaces",
-                    "postinstall":  "npm install prisma@5.16.0 --no-save"
-                },
-    "devDependencies":  {
-                            "concurrently":  "^8.2.2"
-                        },
-    "engines":  {
-                    "node":  "\u003e=20.1.0",
-                    "npm":  "\u003e=10.0.0"
-                },
-    "dependencies":  {
-                         "prisma":  "^5.16.0"
-                     },
-    "bin":  {
-                "prisma":  "./fake-prisma.js"
-            }
+    "name": "svv-ams",
+    "version": "1.0.0",
+    "private": true,
+    "workspaces": [
+        "apps/*",
+        "packages/*"
+    ],
+    "scripts": {
+        "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+        "dev:api": "npm --prefix apps/api run dev",
+        "dev:web": "npm --prefix apps/web run dev",
+        "build": "npm --prefix apps/web run build",
+        "vercel-build": "npm --prefix apps/web run build",
+        "db:migrate": "npm run db:migrate --workspace=apps/api",
+        "db:seed": "npm run db:seed --workspace=apps/api",
+        "db:studio": "npm run db:studio --workspace=apps/api",
+        "test": "npm run test --workspaces",
+        "postinstall": "npm install prisma@5.16.0 --no-save"
+    },
+    "devDependencies": {
+        "concurrently": "^8.2.2",
+        "lodash": "^4.18.1"
+    },
+    "engines": {
+        "node": ">=20.1.0",
+        "npm": ">=10.0.0"
+    },
+    "dependencies": {
+        "prisma": "^5.16.0",
+        "uuid": "^14.0.2"
+    },
+    "bin": {
+        "prisma": "./fake-prisma.js"
+    }
 }
