@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from '../modules/auth/auth.routes';
+import tenantRoutes from '../modules/tenant/tenant.routes';
 import userRoutes from '../modules/users/users.routes';
 import branchRoutes from '../modules/branches/branches.routes';
 import categoryRoutes from '../modules/categories/categories.routes';
@@ -28,6 +29,7 @@ const router = Router();
 
 router.use('/portal', portalRoutes); // Public technician portal (token-authenticated)
 router.use('/auth', authRoutes);
+router.use('/tenants', tenantRoutes);
 router.use('/users', userRoutes);
 router.use('/branches', branchRoutes);
 router.use('/categories', categoryRoutes);

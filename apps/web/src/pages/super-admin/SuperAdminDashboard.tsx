@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Building2, Shield, Settings, Server, Plus, CheckCircle2, XCircle } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { Navigate } from 'react-router-dom';
+import { useTenants, useCreateTenant, useUpdateTenant } from '@/api/tenant.api';
+import { Loader2 } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
   const { user } = useAuthStore();
@@ -13,24 +15,7 @@ export default function SuperAdminDashboard() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const [tenants] = useState([
-    {
-      id: 'svv-org-001',
-      name: 'SVV Digital Hub',
-      customDomain: null,
-      plan: 'Enterprise',
-      status: 'ACTIVE',
-      modules: { print: true, tasks: true, assets: true, billing: false },
-    },
-    {
-      id: 'acme-org-002',
-      name: 'Acme Corp',
-      customDomain: 'app.acmecorp.com',
-      plan: 'Pro',
-      status: 'ACTIVE',
-      modules: { print: false, tasks: true, assets: true, billing: true },
-    }
-  ]);
+  const { data: tenants, isLoading } = useTenants();
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 font-sans">
@@ -54,7 +39,7 @@ export default function SuperAdminDashboard() {
             </div>
             <div>
               <p className="text-sm text-[#6B7280] font-semibold">Active Tenants</p>
-              <h3 className="text-2xl font-bold text-[#081B3A]">2</h3>
+              <h3 className="text-2xl font-bold text-[#081B3A]">{tenants?.length || 0}</h3>
             </div>
           </CardContent>
         </Card>
@@ -65,7 +50,7 @@ export default function SuperAdminDashboard() {
             </div>
             <div>
               <p className="text-sm text-[#6B7280] font-semibold">Active Subscriptions</p>
-              <h3 className="text-2xl font-bold text-[#081B3A]">2</h3>
+              <h3 className="text-2xl font-bold text-[#081B3A]">{tenants?.length || 0}</h3>
             </div>
           </CardContent>
         </Card>
@@ -89,20 +74,20 @@ export default function SuperAdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E2E8F0]">
-                {tenants.map(t => (
+                {isLoading ? (<tr><td colSpan={6} className="text-center py-4"><Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-600"/></td></tr>) : tenants?.map((t: any) => (
                   <tr key={t.id} className="hover:bg-[#F8FAFC]">
                     <td className="py-3 px-4 font-bold text-[#081B3A]">{t.name}</td>
                     <td className="py-3 px-4 text-[#6B7280]">{t.customDomain || 'N/A'}</td>
                     <td className="py-3 px-4">
-                      <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold">{t.plan}</span>
+                      <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold">{t.subscription?.plan?.name || 'Free'}</span>
                     </td>
                     <td className="py-3 px-4 flex gap-1">
-                      {t.modules.print && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">Print Hub</span>}
-                      {t.modules.tasks && <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold">Tasks</span>}
-                      {t.modules.billing && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">Billing</span>}
+                      {t.isPrintHubEnabled && <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">Print Hub</span>}
+                      {t.isTasksEnabled && <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[10px] font-bold">Tasks</span>}
+                      {t.isBillingEnabled && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">Billing</span>}
                     </td>
                     <td className="py-3 px-4">
-                      {t.status === 'ACTIVE' ? (
+                      {t.isActive ? (
                         <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold"><CheckCircle2 className="w-3.5 h-3.5"/> Active</span>
                       ) : (
                         <span className="flex items-center gap-1 text-red-600 text-xs font-bold"><XCircle className="w-3.5 h-3.5"/> Suspended</span>
