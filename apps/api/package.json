@@ -15,10 +15,6 @@
                     "db:reset":  "prisma migrate reset --schema=../../prisma/schema.prisma --force",
                     "test":  "vitest run"
                 },
-    "prisma":  {
-                   "schema":  "../../prisma/schema.prisma",
-                   "seed":  "tsx ../../prisma/seed.ts"
-               },
     "dependencies":  {
                          "@prisma/client":  "^5.16.0",
                          "@supabase/supabase-js":  "^2.45.0",
