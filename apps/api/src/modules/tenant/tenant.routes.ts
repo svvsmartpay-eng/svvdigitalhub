@@ -1,12 +1,13 @@
 ﻿import { Router } from 'express';
-import { requireAuth, requireRoles } from '../../middleware/auth.middleware';
+import { authenticate } from '../../middleware/auth.middleware';
+import { requireRole } from '../../middleware/rbac.middleware';
 import * as tenantService from './tenant.service';
 
 const router = Router();
 
 // Only SUPER_ADMIN can access tenant routes
-router.use(requireAuth);
-router.use(requireRoles(['SUPER_ADMIN']));
+router.use(authenticate);
+router.use(requireRole('SUPER_ADMIN'));
 
 router.get('/', async (req, res, next) => {
   try {
