@@ -552,10 +552,10 @@ export default function PrintQueuePage() {
             onChange={(e) => setDateFilter(e.target.value as any)}
             className="h-10 rounded-xl border border-[#E2E8F0] bg-[#FFFFFF] px-3.5 text-xs font-bold text-[#081B3A] hover:border-[#CBD5E1] shadow-2xs cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0D6EFD]"
           >
-            <option value="ALL">ðŸ“… All Dates</option>
-            <option value="TODAY">ðŸ“… Today</option>
-            <option value="YESTERDAY">ðŸ“… Yesterday</option>
-            <option value="THIS_WEEK">ðŸ“… This Week</option>
+            <option value="ALL">📅 All Dates</option>
+            <option value="TODAY">📅 Today</option>
+            <option value="YESTERDAY">📅 Yesterday</option>
+            <option value="THIS_WEEK">📅 This Week</option>
           </select>
 
           {/* Status Dropdown */}
