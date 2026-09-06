@@ -22,7 +22,7 @@
                             "concurrently":  "^8.2.2"
                         },
     "engines":  {
-                    "node":  "\u003e=20.0.0",
+                    "node":  "\u003e=20.1.0",
                     "npm":  "\u003e=10.0.0"
                 },
     "dependencies":  {
