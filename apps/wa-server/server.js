@@ -605,3 +605,10 @@ app.listen(PORT, async () => {
   console.log(`   Supabase: ${SUPABASE_URL}`);
   await autoStartSessions();
 });
+
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL UNCAUGHT EXCEPTION:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
