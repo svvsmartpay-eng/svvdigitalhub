@@ -14,25 +14,26 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-// ─── Config ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PORT = process.env.PORT || 3001;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://kxacmxxktuvildjjvnjs.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const WebSocket = require('ws');
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false }, global: { WebSocket } });
 const app = express();
 const logger = pino({ level: 'info' }, pino.destination('./wa-server.log'));
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// ─── In-memory store per branch ─────────────────────────────────────────────
-// branchId → { sock, qrCode, status, store }
+// â”€â”€â”€ In-memory store per branch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// branchId â†’ { sock, qrCode, status, store }
 const sessions = new Map();
 const AUTH_DIR = process.env.WA_DATA_DIR || path.join(__dirname, 'auth_sessions');
 if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
-// ─── Helper: Update status in Supabase ───────────────────────────────────────
+// â”€â”€â”€ Helper: Update status in Supabase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function updateBranchStatus(branchId, status, phoneNumber = null) {
   const now = new Date().toISOString();
 
@@ -51,7 +52,7 @@ async function updateBranchStatus(branchId, status, phoneNumber = null) {
     .eq('branchId', branchId);
 }
 
-// ─── Helper: Unwrap Baileys nested messages ─────────────────────────────────
+// â”€â”€â”€ Helper: Unwrap Baileys nested messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function unwrapMessage(msgObj) {
   if (!msgObj) return null;
   let inner = msgObj;
@@ -74,7 +75,7 @@ function unwrapMessage(msgObj) {
   return inner;
 }
 
-// ─── Helper: Format IST Date string (DD-MMM-YY) ──────────────────────────────
+// â”€â”€â”€ Helper: Format IST Date string (DD-MMM-YY) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getISTDateStr(date = new Date()) {
   const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   const d = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
@@ -84,7 +85,7 @@ function getISTDateStr(date = new Date()) {
   return `${day}-${mon}-${yr}`;
 }
 
-// ─── Helper: Generate Smart Ticket Number (e.g., SVV1-02-MAR-26-T01) ─────────
+// â”€â”€â”€ Helper: Generate Smart Ticket Number (e.g., SVV1-02-MAR-26-T01) â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function generateSmartTicketNumber(branchId, branchCode = 'SVV1') {
   const dateStr = getISTDateStr();
   const cleanCode = (branchCode || 'SVV1').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -101,16 +102,16 @@ async function generateSmartTicketNumber(branchId, branchCode = 'SVV1') {
   return `${prefix}${seqPadded}`;
 }
 
-// ─── Standardized Customer Notifications (Strictly 4 Templates) ──────────────
+// â”€â”€â”€ Standardized Customer Notifications (Strictly 4 Templates) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const NOTIFICATION_TEMPLATES = {
   DOCUMENTS_RECEIVED: (ticketNo) =>
-    `*SVV Communications*\n\nThank you! Your documents have been received.\n\n🎫 *Ticket No:* *${ticketNo}*\n\nWe will process and keep you updated.`,
+    `*SVV Communications*\n\nThank you! Your documents have been received.\n\nðŸŽ« *Ticket No:* *${ticketNo}*\n\nWe will process and keep you updated.`,
   WAITING_FOR_CUSTOMER: (ticketNo) =>
-    `*SVV Communications*\n\nWe need some additional information to proceed with your service.\n\n🎫 *Ticket No:* *${ticketNo}*\n\nPlease share the required details.`,
+    `*SVV Communications*\n\nWe need some additional information to proceed with your service.\n\nðŸŽ« *Ticket No:* *${ticketNo}*\n\nPlease share the required details.`,
   SERVICE_COMPLETED: (ticketNo) =>
-    `*SVV Communications*\n\nYour service work has been completed.\n\n🎫 *Ticket No:* *${ticketNo}*\n\nPlease confirm if you need any further changes.`,
+    `*SVV Communications*\n\nYour service work has been completed.\n\nðŸŽ« *Ticket No:* *${ticketNo}*\n\nPlease confirm if you need any further changes.`,
   TICKET_CLOSED: (ticketNo) =>
-    `*SVV Communications*\n\nYour ticket is now closed.\n\n🎫 *Ticket No:* *${ticketNo}*\n\nThank you for using SVV Communications. We look forward to serving you again!`,
+    `*SVV Communications*\n\nYour ticket is now closed.\n\nðŸŽ« *Ticket No:* *${ticketNo}*\n\nThank you for using SVV Communications. We look forward to serving you again!`,
 };
 
 async function sendCustomerNotification(branchId, phoneOrJid, type, ticketNo, customSock = null) {
@@ -138,7 +139,7 @@ async function sendCustomerNotification(branchId, phoneOrJid, type, ticketNo, cu
 
     const messageText = templateFn(ticketNo);
     await sock.sendMessage(targetJid, { text: messageText });
-    console.log(`💬 Notification [${type}] sent to ${targetJid} (Ticket: ${ticketNo})`);
+    console.log(`ðŸ’¬ Notification [${type}] sent to ${targetJid} (Ticket: ${ticketNo})`);
     return true;
   } catch (err) {
     console.error(`Error sending notification [${type}]:`, err.message);
@@ -146,7 +147,7 @@ async function sendCustomerNotification(branchId, phoneOrJid, type, ticketNo, cu
   }
 }
 
-// ─── Helper: Create or Append to Print Order Ticket from WA Message ──────────
+// â”€â”€â”€ Helper: Create or Append to Print Order Ticket from WA Message â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function createTicketFromMessage(branchId, message, sock) {
   try {
     const jid = message.key.remoteJid;
@@ -162,7 +163,7 @@ async function createTicketFromMessage(branchId, message, sock) {
     // Unwrap ephemeral, view-once, document-with-caption wrappers
     const unwrapped = unwrapMessage(rawMessage) || rawMessage;
     const msgKeys = Object.keys(unwrapped || {});
-    console.log(`📩 Incoming message from ${from}. Content keys:`, msgKeys);
+    console.log(`ðŸ“© Incoming message from ${from}. Content keys:`, msgKeys);
 
     let fileUrl = null;
     let fileName = `doc_${Date.now()}`;
@@ -246,12 +247,12 @@ async function createTicketFromMessage(branchId, message, sock) {
       }
 
       if (msgType === 'unknown') {
-        console.log(`ℹ️ Non-printable or metadata message from ${from} (keys: ${msgKeys.join(', ')}). Skipping ticket.`);
+        console.log(`â„¹ï¸ Non-printable or metadata message from ${from} (keys: ${msgKeys.join(', ')}). Skipping ticket.`);
         return;
       }
     }
 
-    console.log(`🎯 Processing ${msgType} for ticket workflow: "${fileName}"`);
+    console.log(`ðŸŽ¯ Processing ${msgType} for ticket workflow: "${fileName}"`);
 
     // Get branch org and branch code
     const { data: branchData } = await supabase
@@ -298,7 +299,7 @@ async function createTicketFromMessage(branchId, message, sock) {
       receivedAt: now
     };
 
-    // ── PRINCIPLE: ONE CUSTOMER = ONE TICKET ─────────────────────────────────
+    // â”€â”€ PRINCIPLE: ONE CUSTOMER = ONE TICKET â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Check if there is already an active (non-closed) ticket for this customer
     // created recently (within last 12 hours) so stale tickets don't hijack indefinitely
     const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
@@ -325,12 +326,12 @@ async function createTicketFromMessage(branchId, message, sock) {
 
     if (activeTicket) {
       // Customer has an existing open ticket! Append document to inputs without spawning new ticket.
-      console.log(`📎 Appending input document to existing open ticket #${activeTicket.tokenNumber} for customer ${phoneFormatted}`);
+      console.log(`ðŸ“Ž Appending input document to existing open ticket #${activeTicket.tokenNumber} for customer ${phoneFormatted}`);
       const updatedDocs = Array.isArray(activeTicket.input_documents) ? [...activeTicket.input_documents, inputDocObj] : [inputDocObj];
 
       await supabase.from('print_orders').update({
         input_documents: updatedDocs,
-        // ✅ Update primary document fields so UI immediately shows the latest doc
+        // âœ… Update primary document fields so UI immediately shows the latest doc
         documentUrl: fileUrl || activeTicket.documentUrl,
         documentName: fileName || activeTicket.documentName,
         pageCount: 1,
@@ -338,14 +339,14 @@ async function createTicketFromMessage(branchId, message, sock) {
         updatedAt: now
       }).eq('id', activeTicket.id);
 
-      console.log(`✅ Document "${fileName}" attached to ticket #${activeTicket.tokenNumber} (now ${updatedDocs.length} docs)`);
+      console.log(`âœ… Document "${fileName}" attached to ticket #${activeTicket.tokenNumber} (now ${updatedDocs.length} docs)`);
       
       // Send customer notification that their new document was received and attached to their ticket
       await sendCustomerNotification(branchId, targetPhoneJid, 'DOCUMENTS_RECEIVED', activeTicket.tokenNumber, sock);
       return;
     }
 
-    // ── Generate Smart Ticket Number & Order Number ─────────────────────────
+    // â”€â”€ Generate Smart Ticket Number & Order Number â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const smartTicketNo = await generateSmartTicketNumber(branchId, branchCode);
     const dateStrDigits = new Date().toISOString().slice(0,10).replace(/-/g, '');
     const orderNo = `PRN-${dateStrDigits}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -383,9 +384,9 @@ async function createTicketFromMessage(branchId, message, sock) {
     const { data: newOrder, error } = await supabase.from('print_orders').insert(insertPayload).select().single();
 
     if (error) {
-      console.error('❌ Failed to create ticket in DB:', error.message);
+      console.error('âŒ Failed to create ticket in DB:', error.message);
     } else {
-      console.log(`✅ Ticket #${smartTicketNo} created in DB for branch ${branchId} from ${from} (${phoneFormatted})`);
+      console.log(`âœ… Ticket #${smartTicketNo} created in DB for branch ${branchId} from ${from} (${phoneFormatted})`);
       
       // Auto reply: Standard Notification 1: Documents Received
       await sendCustomerNotification(branchId, targetPhoneJid, 'DOCUMENTS_RECEIVED', smartTicketNo, sock);
@@ -395,7 +396,7 @@ async function createTicketFromMessage(branchId, message, sock) {
   }
 }
 
-// ─── Connect/Create Baileys session ──────────────────────────────────────────
+// â”€â”€â”€ Connect/Create Baileys session â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function connectBranch(branchId) {
   const authDir = path.join(AUTH_DIR, branchId);
   if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
@@ -434,7 +435,7 @@ async function connectBranch(branchId) {
       session.qrCode = qr;
       session.qrBase64 = await QRCode.toDataURL(qr);
       session.status = 'QR_PENDING';
-      console.log(`📱 QR Generated for branch ${branchId}`);
+      console.log(`ðŸ“± QR Generated for branch ${branchId}`);
     }
 
     if (connection === 'close') {
@@ -444,10 +445,10 @@ async function connectBranch(branchId) {
 
       // Reconnect if not logged out
       if (reason !== DisconnectReason.loggedOut) {
-        console.log(`🔄 Reconnecting branch ${branchId}...`);
+        console.log(`ðŸ”„ Reconnecting branch ${branchId}...`);
         setTimeout(() => connectBranch(branchId), 3000);
       } else {
-        console.log(`🚪 Branch ${branchId} logged out.`);
+        console.log(`ðŸšª Branch ${branchId} logged out.`);
         // Clean auth
         fs.rmSync(authDir, { recursive: true, force: true });
         sessions.delete(branchId);
@@ -459,12 +460,12 @@ async function connectBranch(branchId) {
       session.qrCode = null;
       session.qrBase64 = null;
       const phone = sock.user?.id?.split(':')[0];
-      console.log(`✅ WhatsApp CONNECTED for branch ${branchId} (${phone})`);
+      console.log(`âœ… WhatsApp CONNECTED for branch ${branchId} (${phone})`);
       await updateBranchStatus(branchId, 'CONNECTED', phone);
     }
   });
 
-  // Incoming messages → create tickets
+  // Incoming messages â†’ create tickets
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
     for (const msg of messages) {
@@ -473,7 +474,7 @@ async function connectBranch(branchId) {
       }
       if (msg.key.fromMe) continue; // Skip our own messages
       if (msg.key.remoteJid && msg.key.remoteJid.endsWith('@g.us')) continue; // Skip group messages
-      console.log(`📥 Upsert message received from ${msg.key.remoteJid}`);
+      console.log(`ðŸ“¥ Upsert message received from ${msg.key.remoteJid}`);
       await createTicketFromMessage(branchId, msg, sock);
     }
   });
@@ -481,7 +482,7 @@ async function connectBranch(branchId) {
   return session;
 }
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ API Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Health check
 app.get('/health', (req, res) => res.json({ ok: true, sessions: sessions.size }));
@@ -557,7 +558,7 @@ app.post('/api/wa/:branchId/start', async (req, res) => {
   const { branchId } = req.params;
 
   if (!sessions.has(branchId)) {
-    connectBranch(branchId); // Don't await — let it start in background
+    connectBranch(branchId); // Don't await â€” let it start in background
   }
 
   res.json({ status: 'STARTING', message: 'Session starting, poll /qr endpoint' });
@@ -580,7 +581,7 @@ app.post('/api/wa/:branchId/notify', async (req, res) => {
   }
 });
 
-// ─── Auto-Start Existing Connected Sessions on Boot ───────────────────────────
+// â”€â”€â”€ Auto-Start Existing Connected Sessions on Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function autoStartSessions() {
   try {
     const entries = fs.readdirSync(AUTH_DIR, { withFileTypes: true });
@@ -589,7 +590,7 @@ async function autoStartSessions() {
         const branchId = ent.name;
         const credsPath = path.join(AUTH_DIR, branchId, 'creds.json');
         if (fs.existsSync(credsPath)) {
-          console.log(`🔌 Auto-connecting saved WhatsApp session for branch: ${branchId}`);
+          console.log(`ðŸ”Œ Auto-connecting saved WhatsApp session for branch: ${branchId}`);
           await connectBranch(branchId);
         }
       }
@@ -599,9 +600,9 @@ async function autoStartSessions() {
   }
 }
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.listen(PORT, async () => {
-  console.log(`🚀 SVV AMS WhatsApp Server running on http://localhost:${PORT}`);
+  console.log(`ðŸš€ SVV AMS WhatsApp Server running on http://localhost:${PORT}`);
   console.log(`   Supabase: ${SUPABASE_URL}`);
   await autoStartSessions();
 });
@@ -612,3 +613,4 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('UNHANDLED REJECTION:', reason);
 });
+
