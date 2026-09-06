@@ -21,7 +21,7 @@ export function useLogin() {
 
         return {
           user: {
-            id: 'usr-1',
+            id: isStaff ? '574ca0b7-da7b-4df2-b063-5fbc621e9683' : isManager ? '3fa83aaa-a71a-49ff-a01c-6ed652036207' : '57961069-bfae-4457-a552-898a273ce4c2',
             email: data.email || 'admin@svvams.com',
             name: roleName,
             role: role,
@@ -70,7 +70,7 @@ export function useCurrentUser() {
       } catch {
         if (currentUser) return currentUser;
         return {
-          id: 'usr-1',
+          id: isStaff ? '574ca0b7-da7b-4df2-b063-5fbc621e9683' : isManager ? '3fa83aaa-a71a-49ff-a01c-6ed652036207' : '57961069-bfae-4457-a552-898a273ce4c2',
           email: 'admin@svvams.com',
           name: 'SVV Admin',
           role: 'SUPER_ADMIN',
@@ -93,3 +93,4 @@ export function useChangePassword() {
     },
   });
 }
+
