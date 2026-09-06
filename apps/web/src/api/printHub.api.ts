@@ -427,7 +427,7 @@ export function useBranchWhatsAppConfigs() {
         if (activeBranches.length > 0) {
           return activeBranches.map((b: any) => {
             const cfg = (supaConfigs || []).find((c: any) => c.branchId === b.id);
-            // Only use real stored numbers — never fallback to demo numbers
+            // Only use real stored numbers â€” never fallback to demo numbers
             const waNum = cfg?.whatsappNumber || b.whatsappNumber || b.phone || null;
             const isConn = cfg?.status === 'CONNECTED' && !!waNum;
             return {
@@ -449,7 +449,7 @@ export function useBranchWhatsAppConfigs() {
         console.warn('Supabase fetch branch configs error:', e);
       }
 
-      // 2. Fallback to localStorage (no fake numbers — only real saved numbers)
+      // 2. Fallback to localStorage (no fake numbers â€” only real saved numbers)
       try {
         const local = localStorage.getItem('svv_branches_store');
         if (local) {
@@ -596,7 +596,7 @@ export function useDisconnectWhatsAppGateway() {
   return useMutation({
     mutationFn: async (branchId: string) => {
       try {
-        await fetch(`http://localhost:3001/api/wa/${branchId}/disconnect`, { method: 'POST' });
+        await fetch(`` + (import.meta.env.VITE_WA_SERVER_URL || "http://localhost:3001") + `/api/wa/${branchId}/disconnect`, { method: 'POST' });
       } catch {
         try {
           await fetch(`http://localhost:4000/api/print-hub/whatsapp/gateway/${branchId}/disconnect`, { method: 'POST' });
@@ -618,7 +618,7 @@ export function useDisconnectWhatsAppGateway() {
   });
 }
 
-// ─── OUTPUT JOBS & WORKFLOW EXTENSIONS ────────────────────────────────────────
+// â”€â”€â”€ OUTPUT JOBS & WORKFLOW EXTENSIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type CustomerIntent = 'PRINT_ONLY' | 'ONLINE_SERVICE_ONLY' | 'BOTH';
 
@@ -865,7 +865,7 @@ export function useCloseTicket() {
 
       // 3. Send Notification 4: Ticket Closed
       try {
-        await fetch(`http://localhost:3001/api/wa/${ord.branchId}/notify`, {
+        await fetch(`` + (import.meta.env.VITE_WA_SERVER_URL || "http://localhost:3001") + `/api/wa/${ord.branchId}/notify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -901,7 +901,7 @@ export function useSendCustomerNotification() {
       type: 'DOCUMENTS_RECEIVED' | 'WAITING_FOR_CUSTOMER' | 'SERVICE_COMPLETED' | 'TICKET_CLOSED';
       ticketNo: string;
     }) => {
-      const res = await fetch(`http://localhost:3001/api/wa/${branchId}/notify`, {
+      const res = await fetch(`` + (import.meta.env.VITE_WA_SERVER_URL || "http://localhost:3001") + `/api/wa/${branchId}/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, type, ticketNo }),
@@ -914,3 +914,4 @@ export function useSendCustomerNotification() {
     },
   });
 }
+

@@ -78,7 +78,7 @@ export default function WhatsAppGatewayModal({
 
     const fetchFreshQr = async () => {
       try {
-        const res = await fetch(`http://localhost:3001/api/wa/${branchId}/qr`);
+        const res = await fetch(`${import.meta.env.VITE_WA_SERVER_URL || "http://localhost:3001"}/api/wa/${branchId}/qr`);
         if (res.ok) {
           const d = await res.json();
           if (d.rawQr) setLiveQr(d.rawQr);
@@ -392,3 +392,4 @@ export default function WhatsAppGatewayModal({
     </div>
   );
 }
+
