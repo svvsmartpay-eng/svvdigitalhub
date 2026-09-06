@@ -1,4 +1,4 @@
-﻿{
+{
     "name":  "svv-ams",
     "version":  "1.0.0",
     "private":  true,
@@ -27,5 +27,8 @@
                 },
     "dependencies":  {
                          "prisma":  "^5.16.0"
-                     }
+                     },
+    "bin":  {
+                "prisma":  "./fake-prisma.js"
+            }
 }

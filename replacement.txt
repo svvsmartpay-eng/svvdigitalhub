@@ -1,0 +1,16 @@
+﻿                    <div className="flex items-center gap-2 overflow-hidden w-full">
+                      <button 
+                        type="button" 
+                        onClick={(e) => { e.stopPropagation(); handleToggleFilePrinted(m.id); }}
+                        className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 ${isPrinted ? 'bg-[#198754] border-[#198754] text-white' : 'bg-white border-[#CBD5E1] text-transparent hover:border-[#081B3A]'}`}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="text-xs font-bold text-[#081B3A] truncate">{cleanName}</span>
+                        <span className={`text-[10px] font-mono ${isPrinted ? 'text-[#198754]' : 'text-[#6B7280]'}`}>
+                          Status: {isPrinted ? 'Printed' : 'Pending'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
