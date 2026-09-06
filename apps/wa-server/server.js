@@ -29,7 +29,7 @@ app.use(express.json());
 // ─── In-memory store per branch ─────────────────────────────────────────────
 // branchId → { sock, qrCode, status, store }
 const sessions = new Map();
-const AUTH_DIR = path.join(__dirname, 'auth_sessions');
+const AUTH_DIR = process.env.WA_DATA_DIR || path.join(__dirname, 'auth_sessions');
 if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
 // ─── Helper: Update status in Supabase ───────────────────────────────────────
