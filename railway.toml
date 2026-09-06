@@ -1,0 +1,8 @@
+﻿[build]
+builder = "NIXPACKS"
+buildCommand = "npm install --include=dev && npx prisma@5.16.0 generate && npm --prefix apps/api run build"
+
+[deploy]
+startCommand = "npm --prefix apps/api start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
