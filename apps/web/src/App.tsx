@@ -6,6 +6,11 @@ import SuperAdminDashboard from './pages/super-admin/SuperAdminDashboard';
 import DevHubDashboard from './pages/dev-hub/DevHubDashboard';
 import CreateIssuePage from './pages/dev-hub/CreateIssuePage';
 import IssueDetailsPage from './pages/dev-hub/IssueDetailsPage';
+import DevHubLayout from './pages/dev-hub/DevHubLayout';
+import ManageCategories from './pages/dev-hub/ManageCategories';
+import ManageTeams from './pages/dev-hub/ManageTeams';
+import FilteredIssuesPage from './pages/dev-hub/FilteredIssuesPage';
+import DevHubReports from './pages/dev-hub/DevHubReports';
 import DevPortalLayout from './pages/dev-portal/DevPortalLayout';
 import DevPortalDashboard from './pages/dev-portal/DevPortalDashboard';
 import DashboardPage from './pages/dashboard/DashboardPage';
@@ -71,9 +76,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
         { path: 'super-admin', element: <SuperAdminDashboard /> },
-        { path: 'settings/dev-hub', element: <DevHubDashboard /> },
-        { path: 'settings/dev-hub/create', element: <CreateIssuePage /> },
-        { path: 'settings/dev-hub/issues/:id', element: <IssueDetailsPage /> },
+        { path: 'settings/dev-hub', element: <DevHubLayout />, children: [{ index: true, element: <DevHubDashboard /> }, { path: 'create', element: <CreateIssuePage /> }, { path: 'issues/:id', element: <IssueDetailsPage /> }, { path: 'running', element: <FilteredIssuesPage title="Running Issues" filterType="RUNNING" /> }, { path: 'completed', element: <FilteredIssuesPage title="Completed Issues" filterType="COMPLETED" /> }, { path: 'overdue', element: <FilteredIssuesPage title="Overdue Issues" filterType="OVERDUE" /> }, { path: 'categories', element: <ManageCategories /> }, { path: 'teams', element: <ManageTeams /> }, { path: 'reports', element: <DevHubReports /> }] },
       { path: 'branches', element: <BranchListPage /> },
       { path: 'profile', element: <UserProfilePage /> },
       // Internal Tasks (Operational Work Assignments)
@@ -144,4 +147,5 @@ const router = createBrowserRouter([
 export default function App() {
   return <RouterProvider router={router} />;
 }
+
 
