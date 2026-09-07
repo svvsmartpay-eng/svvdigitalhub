@@ -1,4 +1,4 @@
-{
+﻿{
     "name": "svv-ams",
     "version": "1.0.0",
     "private": true,
@@ -23,7 +23,7 @@
         "lodash": "^4.18.1"
     },
     "engines": {
-        "node": ">=20.1.0",
+        "node": "22.x",
         "npm": ">=10.0.0"
     },
     "dependencies": {
@@ -34,3 +34,4 @@
         "prisma": "./fake-prisma.js"
     }
 }
+
