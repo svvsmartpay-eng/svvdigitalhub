@@ -1993,3 +1993,115 @@ model WhatsAppSession {
 
   @@map("whatsapp_sessions")
 }
+
+// ==========================================
+// DEVELOPER ISSUE HUB MODULE
+// ==========================================
+
+model DevTeam {
+  id           String     @id @default(uuid())
+  name         String
+  contactEmail String?
+  contactPhone String?
+  publicToken  String     @unique @default(uuid())
+  active       Boolean    @default(true)
+  issues       DevIssue[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model DevIssueCategory {
+  id        String     @id @default(uuid())
+  name      String
+  group     String     // e.g., 'SERVICE ISSUES', 'PORTAL ISSUES', 'OTHERS'
+  issues    DevIssue[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+enum DevIssuePriority {
+  CRITICAL // 1 Day SLA
+  HIGH     // 3 Days SLA
+  MEDIUM   // 7 Days SLA
+  LOW      // 15 Days SLA
+}
+
+enum DevIssueStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  NEED_INFO
+  TESTING
+  COMPLETED_BY_DEV
+  VERIFIED_BY_SVV
+  CLOSED
+}
+
+model DevIssue {
+  id              String           @id @default(uuid())
+  ticketCode      String           @unique // e.g., #DEV-000124
+  title           String
+  description     String
+  
+  categoryId      String
+  category        DevIssueCategory @relation(fields: [categoryId], references: [id])
+  
+  priority        DevIssuePriority @default(MEDIUM)
+  status          DevIssueStatus   @default(OPEN)
+  
+  expectedResult  String?
+  currentResult   String?
+  
+  assignedTeamId  String?
+  assignedTeam    DevTeam?         @relation(fields: [assignedTeamId], references: [id])
+  
+  dueDate         DateTime?
+  tags            String           @default("[]") // JSON stringified array of tags
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  createdBy       String           // SVV Admin ID (Name)
+
+  attachments     DevIssueAttachment[]
+  timeline        DevIssueTimeline[]
+}
+
+enum DevAttachmentType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
+model DevIssueAttachment {
+  id        String            @id @default(uuid())
+  issueId   String
+  issue     DevIssue          @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  url       String
+  type      DevAttachmentType @default(IMAGE)
+  createdAt DateTime          @default(now())
+}
+
+enum DevAuthorType {
+  SVV_ADMIN
+  DEVELOPER
+}
+
+model DevIssueTimeline {
+  id                String          @id @default(uuid())
+  issueId           String
+  issue             DevIssue        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  action            String          // e.g., 'Status Changed', 'Comment Added', 'Issue Created'
+  
+  oldStatus         DevIssueStatus?
+  newStatus         DevIssueStatus?
+  
+  comment           String?
+  rootCause         String?
+  fixDetails        String?
+  deploymentDetails String?
+  
+  authorType        DevAuthorType
+  authorName        String          // Name of the person who did the action
+  
+  createdAt         DateTime        @default(now())
+}

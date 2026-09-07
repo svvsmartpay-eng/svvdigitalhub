@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import authRoutes from '../modules/auth/auth.routes';
 import tenantRoutes from '../modules/tenant/tenant.routes';
 import userRoutes from '../modules/users/users.routes';
@@ -53,3 +53,4 @@ router.use('/plugins', pluginsRoutes);
 router.use('/print-hub', printHubRoutes);
 
 export default router;
+

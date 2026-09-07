@@ -1,8 +1,13 @@
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+﻿import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/auth.store';
 import AppShell from './components/layout/AppShell';
 import LoginPage from './pages/auth/LoginPage';
 import SuperAdminDashboard from './pages/super-admin/SuperAdminDashboard';
+import DevHubDashboard from './pages/dev-hub/DevHubDashboard';
+import CreateIssuePage from './pages/dev-hub/CreateIssuePage';
+import IssueDetailsPage from './pages/dev-hub/IssueDetailsPage';
+import DevPortalLayout from './pages/dev-portal/DevPortalLayout';
+import DevPortalDashboard from './pages/dev-portal/DevPortalDashboard';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import AssetListPage from './pages/assets/AssetListPage';
 import AssetDetailPage from './pages/assets/AssetDetailPage';
@@ -58,6 +63,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 const router = createBrowserRouter([
   { path: '/login', element: <PublicRoute><LoginPage /></PublicRoute> },
   { path: '/portal/service/:token', element: <TechnicianPortalPage /> },
+    { path: '/dev-portal/:token', element: <DevPortalLayout />, children: [{ index: true, element: <DevPortalDashboard /> }] },
   {
     path: '/',
     element: <ProtectedRoute><AppShell /></ProtectedRoute>,
@@ -65,6 +71,9 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
         { path: 'super-admin', element: <SuperAdminDashboard /> },
+        { path: 'settings/dev-hub', element: <DevHubDashboard /> },
+        { path: 'settings/dev-hub/create', element: <CreateIssuePage /> },
+        { path: 'settings/dev-hub/issues/:id', element: <IssueDetailsPage /> },
       { path: 'branches', element: <BranchListPage /> },
       { path: 'profile', element: <UserProfilePage /> },
       // Internal Tasks (Operational Work Assignments)
@@ -135,3 +144,4 @@ const router = createBrowserRouter([
 export default function App() {
   return <RouterProvider router={router} />;
 }
+

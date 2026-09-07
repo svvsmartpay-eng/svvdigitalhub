@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import {
@@ -127,6 +127,7 @@ export default function AppShell() {
     { label: 'My Profile', path: '/profile', icon: Settings, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER', 'STAFF', 'TECHNICIAN'] },
     { label: 'Audit Logs', path: '/audit', icon: Shield, roles: ['SUPER_ADMIN', 'ADMIN'] },
     { label: 'Settings', path: '/settings', icon: Settings, roles: ['SUPER_ADMIN', 'ADMIN', 'BRANCH_MANAGER'] },
+    { label: 'Developer Hub', path: '/settings/dev-hub', icon: Settings, roles: ['SUPER_ADMIN', 'ADMIN'] },
   ];
 
   const role = user?.primaryRole || user?.role || user?.roles?.[0] || 'SUPER_ADMIN';
@@ -279,3 +280,4 @@ export default function AppShell() {
     </div>
   );
 }
+
