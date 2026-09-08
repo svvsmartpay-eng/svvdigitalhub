@@ -1,4 +1,11 @@
 import 'dotenv/config';
+import WebSocket from 'ws';
+if (typeof (globalThis as any).WebSocket === 'undefined') {
+  (globalThis as any).WebSocket = WebSocket;
+}
+if (typeof (global as any).WebSocket === 'undefined') {
+  (global as any).WebSocket = WebSocket;
+}
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';

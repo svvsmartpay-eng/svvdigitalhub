@@ -391,9 +391,15 @@ export async function processIncomingWhatsAppMessage(params: {
   // Dual-write sync directly to Supabase cloud database
   try {
     const { createClient } = await import('@supabase/supabase-js');
+    let customWs: any;
+    try { customWs = (await import('ws')).default; } catch (_) {}
     const supabaseCloud = createClient(
       'https://kxacmxxktuvildjjvnjs.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74'
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74',
+      {
+        auth: { persistSession: false },
+        ...(customWs ? { realtime: { transport: customWs } } : {}),
+      }
     );
 
     if (createdOrder) {
@@ -458,9 +464,15 @@ export async function processIncomingWhatsAppMessage(params: {
 
       try {
         const { createClient } = await import('@supabase/supabase-js');
+        let customWs2: any;
+        try { customWs2 = (await import('ws')).default; } catch (_) {}
         const supabaseCloud = createClient(
           'https://kxacmxxktuvildjjvnjs.supabase.co',
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74'
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YWNteHhrdHV2aWxkamp2bmpzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzc5NjgsImV4cCI6MjEwMzc1Mzk2OH0.bz5ObWxHckEg-9FanAP8sOz6VNPa7gKgKvEkzV0Rl74',
+          {
+            auth: { persistSession: false },
+            ...(customWs2 ? { realtime: { transport: customWs2 } } : {}),
+          }
         );
         await supabaseCloud.from('whatsapp_messages').insert([{
           id: outMsg.id,
