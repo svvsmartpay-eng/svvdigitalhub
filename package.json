@@ -6,11 +6,14 @@
         "apps/*",
         "packages/*"
     ],
+    "main": "apps/api/dist/app.js",
     "scripts": {
+        "start": "node apps/api/dist/app.js",
         "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
         "dev:api": "npm --prefix apps/api run dev",
         "dev:web": "npm --prefix apps/web run dev",
         "build": "npm --prefix apps/web run build",
+        "build:api": "npm run db:generate --workspace=@svv-ams/api && npm --prefix apps/api run build",
         "vercel-build": "npm --prefix apps/web run build",
         "db:migrate": "npm run db:migrate --workspace=apps/api",
         "db:seed": "npm run db:seed --workspace=apps/api",
