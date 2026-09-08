@@ -85,6 +85,7 @@ candidateUploadDirs.forEach((dir) => {
 
 // Routes
 app.use(env.API_PREFIX, router);
+app.use('/api', router);
 
 // Health check
 app.get('/health', (_req, res) => {

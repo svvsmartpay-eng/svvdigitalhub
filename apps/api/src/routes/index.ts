@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import authRoutes from '../modules/auth/auth.routes';
 import tenantRoutes from '../modules/tenant/tenant.routes';
 import userRoutes from '../modules/users/users.routes';
@@ -51,6 +51,10 @@ router.use('/documents', documentsRoutes);
 router.use('/alerts', alertsRoutes);
 router.use('/plugins', pluginsRoutes);
 router.use('/print-hub', printHubRoutes);
+import devHubAdminRoutes from '../modules/dev-hub/dev-hub.admin.routes';
+import devHubPortalRoutes from '../modules/dev-hub/dev-hub.portal.routes';
+router.use('/dev-hub/admin', devHubAdminRoutes);
+router.use('/dev-hub/portal', devHubPortalRoutes);
 
 export default router;
 
