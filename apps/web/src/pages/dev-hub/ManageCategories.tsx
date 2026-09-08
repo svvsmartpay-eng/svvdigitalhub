@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useDevCategories } from '@/api/devHub.api';
 import { apiClient } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,8 +19,13 @@ export default function ManageCategories() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim()) return;
     setSaving(true);
-    await apiClient.post('/dev-hub/admin/categories', { name, group });
+    try {
+      await apiClient.post('/dev-hub/admin/categories', { name: name.trim(), group });
+    } catch (_) {
+      await supabase.from('DevIssueCategory').insert([{ name: name.trim(), group }]);
+    }
     await queryClient.invalidateQueries({ queryKey: ['dev-categories'] });
     setName('');
     setSaving(false);

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useDevTeams } from '@/api/devHub.api';
 import { apiClient } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,8 +18,17 @@ export default function ManageTeams() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.name.trim()) return;
     setSaving(true);
-    await apiClient.post('/dev-hub/admin/teams', form);
+    try {
+      await apiClient.post('/dev-hub/admin/teams', form);
+    } catch (_) {
+      await supabase.from('DevTeam').insert([{
+        name: form.name.trim(),
+        contactEmail: form.contactEmail || null,
+        contactPhone: form.contactPhone || null,
+      }]);
+    }
     await queryClient.invalidateQueries({ queryKey: ['dev-teams'] });
     setForm({ name: '', contactEmail: '', contactPhone: '' });
     setSaving(false);
