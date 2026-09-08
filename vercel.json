@@ -8,6 +8,14 @@
       "destination": "/api/whatsapp-webhook.js"
     },
     {
+      "source": "/api/notifications",
+      "destination": "/api/notifications.js"
+    },
+    {
+      "source": "/api/v1/notifications",
+      "destination": "/api/notifications.js"
+    },
+    {
       "source": "/api/v1/(.*)",
       "destination": "https://svv-ams-api-production-044d.up.railway.app/api/v1/$1"
     },
