@@ -26,7 +26,13 @@ export default function CreateIssuePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createMutation.mutateAsync(formData);
+    const payload = {
+      ...formData,
+      title: formData.title.trim() || 'Untitled Issue',
+      description: formData.description.trim() || 'No description provided',
+      categoryId: formData.categoryId || (categories?.[0]?.id || ''),
+    };
+    await createMutation.mutateAsync(payload);
     navigate('/settings/dev-hub');
   };
 
@@ -38,21 +44,21 @@ export default function CreateIssuePage() {
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-bold mb-1">Issue Title</label>
-              <Input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Short summary of the issue" />
+              <label className="block text-sm font-bold mb-1">Issue Title (Optional)</label>
+              <Input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="Short summary of the issue (or leave blank for Untitled)" />
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-bold mb-1">Category</label>
-                <select required className="w-full p-2 border rounded-md" value={formData.categoryId} onChange={e => setFormData({...formData, categoryId: e.target.value})}>
-                  <option value="">Select Category...</option>
+                <label className="block text-sm font-bold mb-1">Category (Optional)</label>
+                <select className="w-full p-2 border rounded-md" value={formData.categoryId} onChange={e => setFormData({...formData, categoryId: e.target.value})}>
+                  <option value="">Select Category (Optional)...</option>
                   {categories?.map((c: any) => <option key={c.id} value={c.id}>{c.group} - {c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-bold mb-1">Priority</label>
-                <select required className="w-full p-2 border rounded-md" value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})}>
+                <label className="block text-sm font-bold mb-1">Priority (Optional)</label>
+                <select className="w-full p-2 border rounded-md" value={formData.priority} onChange={e => setFormData({...formData, priority: e.target.value})}>
                   <option value="CRITICAL">Critical (1 Day SLA)</option>
                   <option value="HIGH">High (3 Days SLA)</option>
                   <option value="MEDIUM">Medium (7 Days SLA)</option>
@@ -62,8 +68,8 @@ export default function CreateIssuePage() {
             </div>
 
             <div>
-              <label className="block text-sm font-bold mb-1">Description</label>
-              <Textarea required className="h-32" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Detailed steps to reproduce, or feature requirements..." />
+              <label className="block text-sm font-bold mb-1">Description (Optional)</label>
+              <Textarea className="h-32" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Detailed steps to reproduce, or feature requirements..." />
             </div>
 
             <div className="grid grid-cols-2 gap-4">

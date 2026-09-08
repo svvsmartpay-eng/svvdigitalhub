@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import prisma from '../../config/database';
 import { AuthRequest } from '../../middleware/auth.middleware';
 
@@ -55,9 +55,24 @@ export const createIssue = async (req: AuthRequest, res: Response) => {
   
   const authorName = req.user?.email || 'SVV Admin';
 
+  let finalCategoryId = categoryId;
+  if (!finalCategoryId) {
+    let cat = await prisma.devIssueCategory.findFirst();
+    if (!cat) {
+      cat = await prisma.devIssueCategory.create({
+        data: { name: 'General', group: 'OTHERS' }
+      });
+    }
+    finalCategoryId = cat.id;
+  }
+
   const issue = await prisma.devIssue.create({
     data: {
-      ticketCode, title, description, categoryId, priority,
+      ticketCode,
+      title: (title && title.trim()) ? title.trim() : 'Untitled Issue',
+      description: description || '',
+      categoryId: finalCategoryId,
+      priority: priority || 'MEDIUM',
       expectedResult, currentResult, assignedTeamId,
       dueDate: dueDate ? new Date(dueDate) : null,
       tags: JSON.stringify(tags || []),
