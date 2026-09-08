@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Outlet, useParams } from 'react-router-dom';
 import { usePortalDashboard } from '@/api/devHub.api';
@@ -11,6 +10,14 @@ export default function DevPortalLayout() {
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-8 h-8 animate-spin text-blue-600"/></div>;
   if (error || !data) return <div className="min-h-screen flex items-center justify-center bg-slate-50">Invalid or Expired Developer Token</div>;
 
+  const teamName = data.team?.name || 'Developer Team';
+  const issues = data.issues || [];
+  const stats = {
+    total: issues.length,
+    pending: issues.filter((i: any) => i.status !== 'CLOSED' && i.status !== 'COMPLETED_BY_DEV').length,
+    completed: issues.filter((i: any) => i.status === 'CLOSED' || i.status === 'COMPLETED_BY_DEV').length,
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b sticky top-0 z-10 shadow-sm">
@@ -19,12 +26,12 @@ export default function DevPortalLayout() {
             <Code2 className="w-6 h-6" /> SVV Developer Portal
           </div>
           <div className="text-sm font-medium text-slate-600">
-            Welcome, {data.teamName}
+            Welcome, {teamName}
           </div>
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-8">
-        <Outlet context={{ token, teamName: data.teamName, stats: data.stats, issues: data.issues }} />
+        <Outlet context={{ token, teamName, stats, issues }} />
       </main>
     </div>
   );

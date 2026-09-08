@@ -1,7 +1,5 @@
-
 import React, { useState } from 'react';
 import { useDevTeams } from '@/api/devHub.api';
-import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +7,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/shared/PageHeader';
 import { Loader2, Copy, ExternalLink } from 'lucide-react';
+
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID();
+    } catch (_) {}
+  }
+  return 'team-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+}
+
+function generateToken(): string {
+  return (Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2)).substring(0, 32);
+}
 
 export default function ManageTeams() {
   const { data: teams, isLoading } = useDevTeams();
@@ -21,17 +32,24 @@ export default function ManageTeams() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      await apiClient.post('/dev-hub/admin/teams', form);
-    } catch (_) {
+      const nowIso = new Date().toISOString();
       await supabase.from('DevTeam').insert([{
+        id: generateUUID(),
         name: form.name.trim(),
-        contactEmail: form.contactEmail || null,
-        contactPhone: form.contactPhone || null,
+        publicToken: generateToken(),
+        contactEmail: form.contactEmail?.trim() || null,
+        contactPhone: form.contactPhone?.trim() || null,
+        active: true,
+        createdAt: nowIso,
+        updatedAt: nowIso,
       }]);
+      await queryClient.invalidateQueries({ queryKey: ['dev-teams'] });
+      setForm({ name: '', contactEmail: '', contactPhone: '' });
+    } catch (err) {
+      console.error('Failed to add dev team:', err);
+    } finally {
+      setSaving(false);
     }
-    await queryClient.invalidateQueries({ queryKey: ['dev-teams'] });
-    setForm({ name: '', contactEmail: '', contactPhone: '' });
-    setSaving(false);
   };
 
   const copyLink = (token: string) => {
@@ -64,7 +82,7 @@ export default function ManageTeams() {
             </form>
           </CardContent>
         </Card>
-        <div className="col-span-2 space-y-4">
+        <div className="col-span-1 lg:col-span-2 space-y-4">
           {isLoading ? <Loader2 className="animate-spin" /> : teams?.map((t: any) => (
             <Card key={t.id}>
               <CardContent className="p-4 flex items-center justify-between">

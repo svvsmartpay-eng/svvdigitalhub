@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
+
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try {
+      return crypto.randomUUID();
+    } catch (_) {}
+  }
+  return 'uuid-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+}
 
 // --- ADMIN API ---
 
@@ -8,13 +16,6 @@ export function useDevCategories() {
   return useQuery({
     queryKey: ['dev-categories'],
     queryFn: async () => {
-      try {
-        const res = await apiClient.get('/dev-hub/admin/categories');
-        if (Array.isArray(res.data?.data) && res.data.data.length > 0) {
-          return res.data.data;
-        }
-      } catch (_) {}
-      
       const { data, error } = await supabase
         .from('DevIssueCategory')
         .select('*')
@@ -34,13 +35,6 @@ export function useDevTeams() {
   return useQuery({
     queryKey: ['dev-teams'],
     queryFn: async () => {
-      try {
-        const res = await apiClient.get('/dev-hub/admin/teams');
-        if (Array.isArray(res.data?.data)) {
-          return res.data.data;
-        }
-      } catch (_) {}
-
       const { data, error } = await supabase
         .from('DevTeam')
         .select('*')
@@ -59,14 +53,6 @@ export function useDevIssues(filters: any = {}) {
   return useQuery({
     queryKey: ['dev-issues', filters],
     queryFn: async () => {
-      try {
-        const params = new URLSearchParams(filters).toString();
-        const res = await apiClient.get(`/dev-hub/admin/issues?${params}`);
-        if (Array.isArray(res.data?.data)) {
-          return res.data.data;
-        }
-      } catch (_) {}
-
       let q = supabase
         .from('DevIssue')
         .select('*, category:DevIssueCategory(*), assignedTeam:DevTeam(*)')
@@ -91,40 +77,55 @@ export function useCreateDevIssue() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: any) => {
+      // 1. Generate unique ticket code
+      let ticketCode = '';
       try {
-        const res = await apiClient.post('/dev-hub/admin/issues', data);
-        if (res.data?.data) return res.data.data;
-      } catch (err) {
-        console.warn('API post failed, using direct Supabase fallback:', err);
+        const { data: latest } = await supabase
+          .from('DevIssue')
+          .select('ticketCode')
+          .order('createdAt', { ascending: false })
+          .limit(1);
+        if (latest && latest.length > 0 && latest[0]?.ticketCode?.startsWith('#DEV-')) {
+          const numPart = parseInt(latest[0].ticketCode.replace('#DEV-', ''), 10);
+          if (!isNaN(numPart)) {
+            ticketCode = `#DEV-${String(numPart + 1).padStart(4, '0')}`;
+          }
+        }
+      } catch (_) {}
+
+      if (!ticketCode) {
+        const { count } = await supabase
+          .from('DevIssue')
+          .select('*', { count: 'exact', head: true });
+        ticketCode = `#DEV-${String((count || 0) + 1001).padStart(4, '0')}`;
       }
 
-      // Generate ticket code
-      const { count } = await supabase
-        .from('DevIssue')
-        .select('*', { count: 'exact', head: true });
-      const ticketCode = `#DEV-${String((count || 0) + 1000).padStart(4, '0')}`;
-
+      // 2. Resolve categoryId fallback
       let catId = data.categoryId;
       if (!catId) {
         const { data: cats } = await supabase.from('DevIssueCategory').select('id').limit(1);
         catId = cats?.[0]?.id;
       }
 
+      const issueId = generateUUID();
+      const nowIso = new Date().toISOString();
+
       const newIssue = {
+        id: issueId,
         ticketCode,
-        title: data.title?.trim() || 'Untitled Issue',
-        description: data.description || '',
+        title: (data.title || '').trim() || 'Untitled Issue',
+        description: (data.description || '').trim() || 'No description provided',
         categoryId: catId,
         priority: data.priority || 'MEDIUM',
         status: 'OPEN',
-        expectedResult: data.expectedResult || null,
-        currentResult: data.currentResult || null,
-        assignedTeamId: data.assignedTeamId || null,
+        expectedResult: data.expectedResult?.trim() || null,
+        currentResult: data.currentResult?.trim() || null,
+        assignedTeamId: data.assignedTeamId?.trim() || null,
         dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
         tags: JSON.stringify(data.tags || []),
         createdBy: 'SVV Admin',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: nowIso,
+        updatedAt: nowIso,
       };
 
       const { data: created, error } = await supabase
@@ -133,17 +134,25 @@ export function useCreateDevIssue() {
         .select()
         .single();
 
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.error('Supabase issue creation error:', error);
+        throw new Error(error.message || 'Failed to create ticket in Supabase');
+      }
 
-      // Create timeline entry
-      await supabase.from('DevIssueTimeline').insert([{
-        issueId: created.id,
-        action: 'Issue Created',
-        newStatus: 'OPEN',
-        authorType: 'SVV_ADMIN',
-        authorName: 'SVV Admin',
-        createdAt: new Date().toISOString(),
-      }]);
+      // 3. Create timeline entry
+      try {
+        await supabase.from('DevIssueTimeline').insert([{
+          id: generateUUID(),
+          issueId: created.id,
+          action: 'Issue Created',
+          newStatus: 'OPEN',
+          authorType: 'SVV_ADMIN',
+          authorName: 'SVV Admin',
+          createdAt: nowIso,
+        }]);
+      } catch (tlErr) {
+        console.warn('Timeline entry creation warning:', tlErr);
+      }
 
       return created;
     },
@@ -157,14 +166,10 @@ export function useUpdateDevIssueStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status, comment }: { id: string, status: string, comment?: string }) => {
-      try {
-        const res = await apiClient.put(`/dev-hub/admin/issues/${id}/status`, { status, comment });
-        if (res.data?.data) return res.data.data;
-      } catch (_) {}
-
+      const nowIso = new Date().toISOString();
       const { data: updated, error } = await supabase
         .from('DevIssue')
-        .update({ status, updatedAt: new Date().toISOString() })
+        .update({ status, updatedAt: nowIso })
         .eq('id', id)
         .select()
         .single();
@@ -173,13 +178,14 @@ export function useUpdateDevIssueStatus() {
 
       if (comment) {
         await supabase.from('DevIssueTimeline').insert([{
+          id: generateUUID(),
           issueId: id,
           action: `Status changed to ${status}`,
           newStatus: status,
           comment,
           authorType: 'SVV_ADMIN',
           authorName: 'SVV Admin',
-          createdAt: new Date().toISOString(),
+          createdAt: nowIso,
         }]);
       }
 
@@ -196,20 +202,17 @@ export function useAddDevIssueComment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, comment }: { id: string, comment: string }) => {
-      try {
-        const res = await apiClient.post(`/dev-hub/admin/issues/${id}/timeline`, { comment });
-        if (res.data?.data) return res.data.data;
-      } catch (_) {}
-
+      const nowIso = new Date().toISOString();
       const { data, error } = await supabase
         .from('DevIssueTimeline')
         .insert([{
+          id: generateUUID(),
           issueId: id,
           action: 'Comment Added',
           comment,
           authorType: 'SVV_ADMIN',
           authorName: 'SVV Admin',
-          createdAt: new Date().toISOString(),
+          createdAt: nowIso,
         }])
         .select()
         .single();
@@ -227,18 +230,13 @@ export function useDevIssueDetails(id: string) {
   return useQuery({
     queryKey: ['dev-issue-details', id],
     queryFn: async () => {
-      try {
-        const res = await apiClient.get(`/dev-hub/admin/issues/${id}`);
-        if (res.data?.data) return res.data.data;
-      } catch (_) {}
-
-      const { data: issue } = await supabase
+      const { data: issue, error } = await supabase
         .from('DevIssue')
         .select('*, category:DevIssueCategory(*), assignedTeam:DevTeam(*)')
         .eq('id', id)
         .single();
 
-      if (!issue) return null;
+      if (error || !issue) return null;
 
       const { data: timeline } = await supabase
         .from('DevIssueTimeline')
@@ -267,15 +265,10 @@ export function usePortalDashboard(token: string) {
   return useQuery({
     queryKey: ['dev-portal', token],
     queryFn: async () => {
-      try {
-        const res = await apiClient.get('/dev-hub/portal/dashboard', { headers: { 'x-dev-token': token } });
-        if (res.data?.data) return res.data.data;
-      } catch (_) {}
-
       const { data: team } = await supabase
         .from('DevTeam')
         .select('*')
-        .eq('portalToken', token)
+        .eq('publicToken', token)
         .single();
 
       if (!team) return null;
@@ -299,11 +292,6 @@ export function usePortalIssueDetails(token: string, id: string) {
   return useQuery({
     queryKey: ['dev-portal-issue', id],
     queryFn: async () => {
-      try {
-        const res = await apiClient.get(`/dev-hub/portal/issues/${id}`, { headers: { 'x-dev-token': token } });
-        if (res.data?.data) return res.data.data;
-      } catch (_) {}
-
       const { data: issue } = await supabase
         .from('DevIssue')
         .select('*, category:DevIssueCategory(*)')
@@ -331,17 +319,13 @@ export function usePortalUpdateStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, token, data }: { id: string, token: string, data: any }) => {
-      try {
-        const res = await apiClient.put(`/dev-hub/portal/issues/${id}/status`, data, { headers: { 'x-dev-token': token } });
-        if (res.data?.data) return res.data.data;
-      } catch (_) {}
-
       const { status, rootCause, fixDetails, deploymentDetails, comment } = data;
+      const nowIso = new Date().toISOString();
       const { data: updated, error } = await supabase
         .from('DevIssue')
         .update({
           status,
-          updatedAt: new Date().toISOString(),
+          updatedAt: nowIso,
         })
         .eq('id', id)
         .select()
@@ -355,13 +339,14 @@ export function usePortalUpdateStatus() {
       }
 
       await supabase.from('DevIssueTimeline').insert([{
+        id: generateUUID(),
         issueId: id,
         action: `Status changed to ${status}`,
         newStatus: status,
         comment: commentText,
         authorType: 'DEVELOPER',
         authorName: 'External Developer',
-        createdAt: new Date().toISOString(),
+        createdAt: nowIso,
       }]);
 
       return updated;
@@ -377,20 +362,17 @@ export function usePortalAddComment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, token, comment }: { id: string, token: string, comment: string }) => {
-      try {
-        const res = await apiClient.post(`/dev-hub/portal/issues/${id}/timeline`, { comment }, { headers: { 'x-dev-token': token } });
-        if (res.data?.data) return res.data.data;
-      } catch (_) {}
-
+      const nowIso = new Date().toISOString();
       const { data, error } = await supabase
         .from('DevIssueTimeline')
         .insert([{
+          id: generateUUID(),
           issueId: id,
           action: 'Developer Comment',
           comment,
           authorType: 'DEVELOPER',
           authorName: 'External Developer',
-          createdAt: new Date().toISOString(),
+          createdAt: nowIso,
         }])
         .select()
         .single();
