@@ -344,19 +344,23 @@ export function usePortalUpdateStatus() {
 
       if (error) throw new Error(error.message);
 
-      let commentText = comment || `Status updated to ${status}`;
-      if (rootCause || fixDetails || deploymentDetails) {
-        commentText += `\n\n[Root Cause]: ${rootCause || 'N/A'}\n[Fix Details]: ${fixDetails || 'N/A'}\n[Deployment]: ${deploymentDetails || 'N/A'}`;
-      }
+      const actionLabel = status === 'COMPLETED_BY_DEV' ? 'Marked as Fixed by Developer'
+        : status === 'IN_PROGRESS' ? 'Work Started by Developer'
+        : status === 'CLOSED' ? 'Ticket Closed by SVV Team'
+        : status === 'OPEN' ? 'Issue Reopened by SVV Team'
+        : `Status changed to ${status}`;
 
       await supabase.from('DevIssueTimeline').insert([{
         id: generateUUID(),
         issueId: id,
-        action: `Status changed to ${status}`,
+        action: actionLabel,
         newStatus: status,
-        comment: commentText,
-        authorType: 'DEVELOPER',
-        authorName: 'External Developer',
+        comment: comment || null,
+        rootCause: rootCause || null,
+        fixDetails: fixDetails || null,
+        deploymentDetails: deploymentDetails || null,
+        authorType: (status === 'CLOSED' || status === 'OPEN') ? 'SVV_ADMIN' : 'DEVELOPER',
+        authorName: (status === 'CLOSED' || status === 'OPEN') ? 'SVV Admin' : 'External Developer',
         createdAt: nowIso,
       }]);
 
@@ -365,6 +369,8 @@ export function usePortalUpdateStatus() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['dev-portal', variables.token] });
       queryClient.invalidateQueries({ queryKey: ['dev-portal-issue', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['dev-issue', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['dev-issues'] });
     }
   });
 }

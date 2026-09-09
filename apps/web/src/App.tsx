@@ -1,4 +1,4 @@
-﻿import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/auth.store';
 import AppShell from './components/layout/AppShell';
 import LoginPage from './pages/auth/LoginPage';
@@ -13,6 +13,7 @@ import FilteredIssuesPage from './pages/dev-hub/FilteredIssuesPage';
 import DevHubReports from './pages/dev-hub/DevHubReports';
 import DevPortalLayout from './pages/dev-portal/DevPortalLayout';
 import DevPortalDashboard from './pages/dev-portal/DevPortalDashboard';
+import PortalIssueDetails from './pages/dev-portal/PortalIssueDetails';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import AssetListPage from './pages/assets/AssetListPage';
 import AssetDetailPage from './pages/assets/AssetDetailPage';
@@ -68,7 +69,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 const router = createBrowserRouter([
   { path: '/login', element: <PublicRoute><LoginPage /></PublicRoute> },
   { path: '/portal/service/:token', element: <TechnicianPortalPage /> },
-    { path: '/dev-portal/:token', element: <DevPortalLayout />, children: [{ index: true, element: <DevPortalDashboard /> }] },
+    { path: '/dev-portal/:token', element: <DevPortalLayout />, children: [{ index: true, element: <DevPortalDashboard /> }, { path: 'issues/:id', element: <PortalIssueDetails /> }] },
   {
     path: '/',
     element: <ProtectedRoute><AppShell /></ProtectedRoute>,

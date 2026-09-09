@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { MessageCircle, Copy, Share2, X, CheckCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { MessageCircle, Copy, Share2, X, CheckCheck, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface ShareIssueProps {
   issue: any;
@@ -37,7 +37,12 @@ function getAgeDays(createdAt: string) {
 }
 
 export function buildWhatsAppMessage(issue: any, stats?: { total: number; open: number; inProgress: number; overdue: number; completed: number }) {
-  const ticketUrl = `${window.location.origin}/settings/dev-hub/issues/${issue.id}`;
+  // Use dev portal link if team has publicToken, else admin portal
+  const portalToken = issue.assignedTeam?.publicToken;
+  const ticketUrl = portalToken
+    ? `${window.location.origin}/dev-portal/${portalToken}/issues/${issue.id}`
+    : `${window.location.origin}/settings/dev-hub/issues/${issue.id}`;
+
   const age = getAgeDays(issue.createdAt);
   const priorityIcon = getPriorityIcon(issue.priority);
   const statusLabel = getStatusLabel(issue.status);
@@ -64,12 +69,8 @@ export function buildWhatsAppMessage(issue: any, stats?: { total: number; open: 
     lines.push('');
   }
 
-  if (issue.currentResult) {
-    lines.push(`⚠️ *Current Behavior:* ${issue.currentResult}`);
-  }
-  if (issue.expectedResult) {
-    lines.push(`✅ *Expected:* ${issue.expectedResult}`);
-  }
+  if (issue.currentResult) lines.push(`⚠️ *Current:* ${issue.currentResult}`);
+  if (issue.expectedResult) lines.push(`✅ *Expected:* ${issue.expectedResult}`);
   if (issue.currentResult || issue.expectedResult) lines.push('');
 
   lines.push(`👤 *Assigned:* ${issue.assignedTeam?.name || 'SVV Dev Team'}`);
@@ -92,6 +93,7 @@ export function buildWhatsAppMessage(issue: any, stats?: { total: number; open: 
 }
 
 export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -104,12 +106,21 @@ export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) 
   } : undefined;
 
   const message = buildWhatsAppMessage(issue, stats);
-  const ticketUrl = `${window.location.origin}/settings/dev-hub/issues/${issue.id}`;
+  const portalToken = issue.assignedTeam?.publicToken;
+  const ticketUrl = portalToken
+    ? `${window.location.origin}/dev-portal/${portalToken}/issues/${issue.id}`
+    : `${window.location.origin}/settings/dev-hub/issues/${issue.id}`;
 
   const handleWhatsApp = () => {
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/?text=${encoded}`, '_blank');
     setOpen(false);
+  };
+
+  const handleViewFullTicket = () => {
+    setOpen(false);
+    // Navigate to admin portal details (admin context)
+    navigate(`/settings/dev-hub/issues/${issue.id}`);
   };
 
   const handleCopyLink = () => {
@@ -145,14 +156,14 @@ export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) 
             <div className="bg-gradient-to-r from-[#081B3A] to-[#0D6EFD] text-white px-5 py-4 flex items-center justify-between">
               <div>
                 <div className="font-bold text-lg">Share Ticket</div>
-                <div className="text-xs opacity-80">{issue.ticketCode} — {issue.title?.substring(0, 30)}{(issue.title?.length || 0) > 30 ? '...' : ''}</div>
+                <div className="text-xs opacity-80">{issue.ticketCode} — {(issue.title || '').substring(0, 30)}{(issue.title?.length || 0) > 30 ? '...' : ''}</div>
               </div>
               <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Preview card - looks like WhatsApp card */}
+            {/* Preview card - WhatsApp style */}
             <div className="p-4 bg-[#ECE5DD]">
               <div className="bg-white rounded-xl shadow-sm overflow-hidden border">
                 {/* Card Header */}
@@ -181,6 +192,9 @@ export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) 
                     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">
                       {issue.category?.name || 'General'}
                     </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-semibold">
+                      {getStatusLabel(issue.status)}
+                    </span>
                   </div>
 
                   {issue.description && issue.description !== 'No description provided' && (
@@ -207,13 +221,14 @@ export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) 
                     </div>
                   )}
 
-                  <a
-                    href={ticketUrl}
-                    className="flex items-center justify-center gap-2 bg-[#0D6EFD] text-white text-sm font-bold py-2 rounded-lg mt-2 w-full"
-                    onClick={e => e.preventDefault()}
+                  {/* FIX: View Full Ticket navigates properly */}
+                  <button
+                    onClick={handleViewFullTicket}
+                    className="flex items-center justify-center gap-2 bg-[#0D6EFD] hover:bg-blue-700 text-white text-sm font-bold py-2.5 rounded-lg mt-2 w-full transition-colors"
                   >
-                    🔗 View Full Ticket
-                  </a>
+                    <ExternalLink className="w-4 h-4" />
+                    View Full Ticket
+                  </button>
                   <div className="text-center text-[10px] text-gray-400">svvdigitalhub-svv.vercel.app</div>
                 </div>
               </div>

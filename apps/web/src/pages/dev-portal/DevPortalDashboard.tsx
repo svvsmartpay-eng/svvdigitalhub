@@ -1,114 +1,164 @@
-
 import React, { useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { usePortalUpdateStatus, usePortalAddComment } from '@/api/devHub.api';
+import { useOutletContext, useNavigate } from 'react-router-dom';
+import { Search, Filter, Clock, MessageSquare, ChevronRight, Code2 } from 'lucide-react';
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case 'OPEN': return 'bg-green-100 text-green-700 border-green-200';
+    case 'IN_PROGRESS': return 'bg-blue-100 text-blue-700 border-blue-200';
+    case 'NEED_INFO': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+    case 'TESTING': return 'bg-purple-100 text-purple-700 border-purple-200';
+    case 'COMPLETED_BY_DEV': return 'bg-orange-100 text-orange-700 border-orange-200';
+    case 'VERIFIED_BY_SVV': return 'bg-teal-100 text-teal-700 border-teal-200';
+    case 'CLOSED': return 'bg-gray-100 text-gray-700 border-gray-200';
+    case 'PENDING': return 'bg-amber-100 text-amber-700 border-amber-200';
+    default: return 'bg-gray-100 text-gray-600 border-gray-200';
+  }
+}
+
+function getStatusLabel(status: string) {
+  switch (status) {
+    case 'OPEN': return 'Open';
+    case 'IN_PROGRESS': return 'In Progress';
+    case 'NEED_INFO': return 'Need Info';
+    case 'TESTING': return 'Testing';
+    case 'COMPLETED_BY_DEV': return 'Completed';
+    case 'VERIFIED_BY_SVV': return 'Verified';
+    case 'CLOSED': return 'Closed';
+    default: return status;
+  }
+}
+
+function getAgeDays(createdAt: string) {
+  return Math.floor((new Date().getTime() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
+}
 
 export default function DevPortalDashboard() {
   const { token, teamName, stats, issues } = useOutletContext<any>();
-  
-  const [selectedIssue, setSelectedIssue] = useState<any>(null);
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [newStatus, setNewStatus] = useState('');
-  
-  const [completionForm, setCompletionForm] = useState({ rootCause: '', fixDetails: '', deploymentDetails: '', comment: '' });
-  
-  const updateStatusMut = usePortalUpdateStatus();
-  const addCommentMut = usePortalAddComment();
+  const navigate = useNavigate();
 
-  const handleUpdateClick = (issue: any, status: string) => {
-    setSelectedIssue(issue);
-    setNewStatus(status);
-    setIsStatusModalOpen(true);
-  };
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
-  const submitStatus = async () => {
-    if (newStatus === 'COMPLETED_BY_DEV') {
-      await updateStatusMut.mutateAsync({ id: selectedIssue.id, token, data: { status: newStatus, ...completionForm } });
-    } else {
-      await updateStatusMut.mutateAsync({ id: selectedIssue.id, token, data: { status: newStatus, comment: completionForm.comment } });
-    }
-    setIsStatusModalOpen(false);
-  };
+  const categories = ['all', ...Array.from(new Set(issues?.map((i: any) => i.category?.name).filter(Boolean)))];
+
+  const filtered = (issues || []).filter((i: any) => {
+    const matchSearch = !search ||
+      i.title?.toLowerCase().includes(search.toLowerCase()) ||
+      i.ticketCode?.toLowerCase().includes(search.toLowerCase());
+    const matchCat = categoryFilter === 'all' || i.category?.name === categoryFilter;
+    return matchSearch && matchCat;
+  });
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
-        <Card><CardContent className="p-6">
-          <div className="text-sm text-gray-500 font-bold mb-1">Total Assigned</div>
-          <div className="text-3xl font-black">{stats.total}</div>
-        </CardContent></Card>
-        <Card className="bg-orange-50 border-orange-200"><CardContent className="p-6">
-          <div className="text-sm text-orange-600 font-bold mb-1">Pending</div>
-          <div className="text-3xl font-black text-orange-700">{stats.pending}</div>
-        </CardContent></Card>
-        <Card className="bg-green-50 border-green-200"><CardContent className="p-6">
-          <div className="text-sm text-green-600 font-bold mb-1">Completed</div>
-          <div className="text-3xl font-black text-green-700">{stats.completed}</div>
-        </CardContent></Card>
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h2 className="text-xl font-bold mb-4">Your Tasks</h2>
-        <div className="space-y-4">
-          {issues.map((issue: any) => (
-            <div key={issue.id} className="border rounded-lg p-4 flex justify-between items-center">
-              <div>
-                <div className="flex gap-2 items-center mb-1">
-                  <span className="font-bold text-lg">{issue.ticketCode} {issue.title}</span>
-                  <span className="bg-slate-100 text-slate-800 text-xs px-2 py-0.5 rounded font-bold">{issue.status}</span>
-                  <span className="bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded font-bold">{issue.priority}</span>
-                </div>
-                <p className="text-sm text-gray-600 line-clamp-1">{issue.description}</p>
-              </div>
-              <div className="flex gap-2">
-                {issue.status !== 'CLOSED' && issue.status !== 'VERIFIED_BY_SVV' && (
-                  <>
-                    <Button variant="outline" size="sm" onClick={() => handleUpdateClick(issue, 'IN_PROGRESS')}>Start Work</Button>
-                    <Button size="sm" className="bg-green-600 text-white" onClick={() => handleUpdateClick(issue, 'COMPLETED_BY_DEV')}>Mark Fixed</Button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+    <div className="space-y-4">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
+          <div className="text-2xl font-black text-[#081B3A]">{stats.total}</div>
+          <div className="text-xs text-gray-500 font-medium mt-0.5">Total Tickets</div>
+        </div>
+        <div className="bg-[#EFF6FF] rounded-xl border border-blue-200 p-4 text-center shadow-sm">
+          <div className="text-2xl font-black text-blue-600">{issues?.filter((i: any) => ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'NEED_INFO'].includes(i.status)).length || 0}</div>
+          <div className="text-xs text-blue-600 font-medium mt-0.5">Open</div>
+        </div>
+        <div className="bg-[#F0FDF4] rounded-xl border border-green-200 p-4 text-center shadow-sm">
+          <div className="text-2xl font-black text-green-600">{stats.completed}</div>
+          <div className="text-xs text-green-600 font-medium mt-0.5">Completed</div>
         </div>
       </div>
 
-      <Dialog open={isStatusModalOpen} onOpenChange={setIsStatusModalOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader><DialogTitle>Update Status: {newStatus}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-4">
-            {newStatus === 'COMPLETED_BY_DEV' ? (
-              <>
-                <div>
-                  <label className="text-xs font-bold block mb-1">Root Cause (Mandatory)</label>
-                  <Textarea required value={completionForm.rootCause} onChange={e => setCompletionForm({...completionForm, rootCause: e.target.value})} />
+      {/* Search + Filter */}
+      <div className="flex gap-2">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search tickets..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          />
+        </div>
+        <select
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          className="px-3 py-2.5 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {(categories as string[]).map(cat => (
+            <option key={cat} value={cat}>{cat === 'all' ? 'All Categories' : cat}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Ticket List - Step 4 style */}
+      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+          <h2 className="font-bold text-[#081B3A]">All Tickets</h2>
+          <span className="text-xs text-gray-500">{filtered.length} tickets</span>
+        </div>
+
+        <div className="divide-y">
+          {filtered.length === 0 ? (
+            <div className="p-8 text-center text-gray-400">
+              <Code2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p>No tickets found</p>
+            </div>
+          ) : filtered.map((issue: any) => {
+            const age = getAgeDays(issue.createdAt);
+            return (
+              <button
+                key={issue.id}
+                onClick={() => navigate(`/dev-portal/${token}/issues/${issue.id}`)}
+                className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex gap-3 items-start"
+              >
+                {/* Thumbnail */}
+                <div className="w-16 h-16 bg-gray-100 rounded-lg border shrink-0 flex items-center justify-center overflow-hidden">
+                  {issue.attachments?.[0]?.url ? (
+                    <img src={issue.attachments[0].url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <Code2 className="w-6 h-6 text-gray-300" />
+                  )}
                 </div>
-                <div>
-                  <label className="text-xs font-bold block mb-1">What Was Fixed? (Mandatory)</label>
-                  <Textarea required value={completionForm.fixDetails} onChange={e => setCompletionForm({...completionForm, fixDetails: e.target.value})} />
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-[#0D6EFD]">{issue.ticketCode}</span>
+                      <p className="font-semibold text-sm text-[#081B3A] leading-tight mt-0.5 line-clamp-2">
+                        {issue.title || 'Untitled Issue'}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded border ${getStatusColor(issue.status)}`}>
+                      {getStatusLabel(issue.status)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-500">
+                    <span className={`font-semibold ${
+                      issue.priority === 'CRITICAL' ? 'text-red-600' :
+                      issue.priority === 'HIGH' ? 'text-orange-600' :
+                      issue.priority === 'MEDIUM' ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>{issue.priority}</span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {age} Days
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="w-3 h-3" />
+                      {issue.timeline?.length || 0}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs font-bold block mb-1">Deployment Details (Mandatory)</label>
-                  <Textarea required value={completionForm.deploymentDetails} onChange={e => setCompletionForm({...completionForm, deploymentDetails: e.target.value})} placeholder="e.g., Deployed to prod branch, requires DB migration..." />
-                </div>
-              </>
-            ) : (
-              <div>
-                <label className="text-xs font-bold block mb-1">Comment (Optional)</label>
-                <Textarea value={completionForm.comment} onChange={e => setCompletionForm({...completionForm, comment: e.target.value})} />
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsStatusModalOpen(false)}>Cancel</Button>
-            <Button onClick={submitStatus} disabled={updateStatusMut.isPending}>Save Status</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+                <ChevronRight className="w-4 h-4 text-gray-300 shrink-0 mt-2" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
