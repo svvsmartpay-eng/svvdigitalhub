@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Code, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PageHeader from '@/components/shared/PageHeader';
+import ShareIssueButton from '@/components/dev-hub/ShareIssueButton';
 
 export default function FilteredIssuesPage({ title, filterType }: { title: string, filterType: 'RUNNING' | 'COMPLETED' | 'OVERDUE' }) {
   const { data: issues, isLoading } = useDevIssues();
@@ -47,8 +48,11 @@ export default function FilteredIssuesPage({ title, filterType }: { title: strin
                     </div>
                   </div>
                   <div className="flex justify-between items-center mt-2 text-xs text-gray-500 font-medium">
-                    <span>Created {new Date(issue.createdAt).toLocaleDateString()}</span>
-                    {issue.dueDate && <span className="text-red-500 font-bold">Due: {new Date(issue.dueDate).toLocaleDateString()}</span>}
+                    <div className="flex items-center gap-2">
+                      <span>Created {new Date(issue.createdAt).toLocaleDateString()}</span>
+                      {issue.dueDate && <span className="text-red-500 font-bold">Due: {new Date(issue.dueDate).toLocaleDateString()}</span>}
+                    </div>
+                    <ShareIssueButton issue={issue} allIssues={issues} />
                   </div>
                 </div>
               </CardContent>

@@ -1,10 +1,11 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useDevIssues } from '@/api/devHub.api';
 import PageHeader from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Plus, Code, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import ShareIssueButton from '@/components/dev-hub/ShareIssueButton';
 
 export default function DevHubDashboard() {
   const { data: issues, isLoading } = useDevIssues();
@@ -81,7 +82,9 @@ export default function DevHubDashboard() {
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
                         <div className="flex justify-between items-start">
-                          <h4 className="font-bold text-base text-[#081B3A] hover:underline cursor-pointer"><Link to={`/settings/dev-hub/issues/${issue.id}`}>{issue.ticketCode} {issue.title}</Link></h4>
+                          <h4 className="font-bold text-base text-[#081B3A] hover:underline cursor-pointer">
+                            <Link to={`/settings/dev-hub/issues/${issue.id}`}>{issue.ticketCode} {issue.title}</Link>
+                          </h4>
                           <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold">{issue.status}</span>
                         </div>
                         <div className="flex gap-2 mt-1">
@@ -95,7 +98,10 @@ export default function DevHubDashboard() {
                           <span>{issue.attachments?.length || 0} attachments</span>
                           <span>Created by {issue.createdBy}</span>
                         </div>
-                        <span>{new Date(issue.createdAt).toLocaleDateString()}</span>
+                        <div className="flex items-center gap-3">
+                          <span>{new Date(issue.createdAt).toLocaleDateString()}</span>
+                          <ShareIssueButton issue={issue} allIssues={issues} />
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -130,4 +136,3 @@ export default function DevHubDashboard() {
     </div>
   );
 }
-
