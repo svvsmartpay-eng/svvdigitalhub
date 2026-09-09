@@ -43,6 +43,16 @@ export function buildWhatsAppMessage(issue: any, stats?: { total: number; open: 
     ? `${window.location.origin}/dev-portal/${portalToken}/issues/${issue.id}`
     : `${window.location.origin}/settings/dev-hub/issues/${issue.id}`;
 
+  // Build the OG-enabled shareable link for WhatsApp rich card preview
+  // WhatsApp crawls /api/ticket?id=X&token=Y to get OG meta tags
+  // Then redirects the actual user to the dev portal (no login needed)
+  const ogUrl = (() => {
+    const base = window.location.origin;
+    const params = new URLSearchParams({ id: issue.id });
+    if (portalToken) params.set('token', portalToken);
+    return `${base}/api/ticket?${params.toString()}`;
+  })();
+
   const age = getAgeDays(issue.createdAt);
   const priorityIcon = getPriorityIcon(issue.priority);
   const statusLabel = getStatusLabel(issue.status);
@@ -84,13 +94,15 @@ export function buildWhatsAppMessage(issue: any, stats?: { total: number; open: 
     lines.push('');
   }
 
+  // Share the OG-enabled URL — WhatsApp will generate a rich card preview from this link
   lines.push(`🔗 *View Full Ticket:*`);
-  lines.push(ticketUrl);
+  lines.push(ogUrl);
   lines.push('');
   lines.push(`_Please check and update. 🙏_`);
 
   return lines.join('\n');
 }
+
 
 export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) {
   const navigate = useNavigate();
@@ -107,9 +119,18 @@ export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) 
 
   const message = buildWhatsAppMessage(issue, stats);
   const portalToken = issue.assignedTeam?.publicToken;
-  const ticketUrl = portalToken
-    ? `${window.location.origin}/dev-portal/${portalToken}/issues/${issue.id}`
-    : `${window.location.origin}/settings/dev-hub/issues/${issue.id}`;
+
+  // OG-enabled URL: WhatsApp crawls this and gets rich card preview, browser gets redirected to portal
+  const ogShareUrl = (() => {
+    const params = new URLSearchParams({ id: issue.id });
+    if (portalToken) params.set('token', portalToken);
+    return `${window.location.origin}/api/ticket?${params.toString()}`;
+  })();
+
+  // Direct portal URL (no OG redirect - for admin's "View Full Ticket" within the app)
+  const directPortalUrl = portalToken
+    ? `/dev-portal/${portalToken}/issues/${issue.id}`
+    : `/settings/dev-hub/issues/${issue.id}`;
 
   const handleWhatsApp = () => {
     const encoded = encodeURIComponent(message);
@@ -119,12 +140,12 @@ export default function ShareIssueButton({ issue, allIssues }: ShareIssueProps) 
 
   const handleViewFullTicket = () => {
     setOpen(false);
-    // Navigate to admin portal details (admin context)
     navigate(`/settings/dev-hub/issues/${issue.id}`);
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(ticketUrl);
+    // Copy the OG-enabled link so WhatsApp shows rich preview when pasted
+    navigator.clipboard.writeText(ogShareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
