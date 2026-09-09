@@ -77,28 +77,39 @@ export function useCreateDevIssue() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: any) => {
-      // 1. Generate unique ticket code
+      // 1. Generate unique ticket code - collision-safe approach
       let ticketCode = '';
       try {
-        const { data: latest } = await supabase
+        // Get all existing numeric-format ticket codes
+        const { data: allCodes } = await supabase
           .from('DevIssue')
-          .select('ticketCode')
-          .order('createdAt', { ascending: false })
-          .limit(1);
-        if (latest && latest.length > 0 && latest[0]?.ticketCode?.startsWith('#DEV-')) {
-          const numPart = parseInt(latest[0].ticketCode.replace('#DEV-', ''), 10);
-          if (!isNaN(numPart)) {
-            ticketCode = `#DEV-${String(numPart + 1).padStart(4, '0')}`;
+          .select('ticketCode');
+        
+        // Find highest numeric DEV code
+        let maxNum = 1000;
+        (allCodes || []).forEach((row: any) => {
+          if (typeof row.ticketCode === 'string' && /^#DEV-\d+$/.test(row.ticketCode)) {
+            const n = parseInt(row.ticketCode.replace('#DEV-', ''), 10);
+            if (!isNaN(n) && n > maxNum) maxNum = n;
           }
-        }
-      } catch (_) {}
-
-      if (!ticketCode) {
-        const { count } = await supabase
+        });
+        ticketCode = `#DEV-${String(maxNum + 1).padStart(4, '0')}`;
+        
+        // Verify uniqueness - if exists, use timestamp fallback
+        const { data: existing } = await supabase
           .from('DevIssue')
-          .select('*', { count: 'exact', head: true });
-        ticketCode = `#DEV-${String((count || 0) + 1001).padStart(4, '0')}`;
+          .select('id')
+          .eq('ticketCode', ticketCode)
+          .limit(1);
+        
+        if (existing && existing.length > 0) {
+          // Collision! Use timestamp-based fallback
+          ticketCode = `#DEV-${Date.now().toString().slice(-6)}`;
+        }
+      } catch (_) {
+        ticketCode = `#DEV-${Date.now().toString().slice(-6)}`;
       }
+
 
       // 2. Resolve categoryId fallback
       let catId = data.categoryId;
