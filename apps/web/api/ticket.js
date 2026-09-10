@@ -1,10 +1,10 @@
-// apps/web/api/ticket.js
-// Vercel Serverless Function - serves OG meta tags for WhatsApp/social rich previews
+// Vercel Serverless Function - OG Meta Tags for WhatsApp/Social rich card previews
 // URL: /api/ticket?id=ISSUE_ID&token=TEAM_PUBLIC_TOKEN
-// - WhatsApp bot crawls this URL → gets OG tags → shows rich preview card
-// - Human clicking the link → HTML redirect → lands on /dev-portal/:token/issues/:id (no login needed)
+// - WhatsApp bot crawls this → gets OG tags → shows rich preview card
+// - Human clicks link → gets HTML page → redirected to /dev-portal/:token/issues/:id
 
-const { createClient } = require('@supabase/supabase-js');
+// NOTE: This file uses ESM because package.json has "type": "module"
+import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://kxacmxxktuvildjjvnjs.supabase.co';
 const SUPABASE_KEY =
@@ -25,34 +25,24 @@ function escapeHtml(str) {
 }
 
 function getPriorityEmoji(priority) {
-  switch (priority) {
-    case 'CRITICAL': return '🔴';
-    case 'HIGH': return '🟠';
-    case 'MEDIUM': return '🟡';
-    case 'LOW': return '🟢';
-    default: return '⚪';
-  }
+  const map = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
+  return map[priority] || '⚪';
 }
 
 function getStatusLabel(status) {
   const map = {
-    OPEN: 'Open',
-    ASSIGNED: 'Assigned',
-    IN_PROGRESS: 'In Progress',
-    NEED_INFO: 'Need Info',
-    TESTING: 'Testing',
-    COMPLETED_BY_DEV: 'Fixed by Dev',
-    VERIFIED_BY_SVV: 'Verified',
-    CLOSED: 'Closed',
+    OPEN: 'Open', ASSIGNED: 'Assigned', IN_PROGRESS: 'In Progress',
+    NEED_INFO: 'Need Info', TESTING: 'Testing', COMPLETED_BY_DEV: 'Fixed by Dev',
+    VERIFIED_BY_SVV: 'Verified', CLOSED: 'Closed',
   };
   return map[status] || status;
 }
 
 function getAgeDays(createdAt) {
-  return Math.floor((Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
+  return Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   const { id, token } = req.query;
 
   if (!id) {
@@ -63,7 +53,6 @@ module.exports = async (req, res) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Fetch the ticket with category and team
     const { data: issue, error } = await supabase
       .from('DevIssue')
       .select('*, category:DevIssueCategory(name), assignedTeam:DevTeam(name, publicToken)')
@@ -75,126 +64,106 @@ module.exports = async (req, res) => {
       return;
     }
 
-    // Determine the portal token - use passed token, or the team's publicToken, or admin portal
     const portalToken = token || issue.assignedTeam?.publicToken;
     const portalUrl = portalToken
       ? `${BASE_URL}/dev-portal/${portalToken}/issues/${id}`
       : `${BASE_URL}/settings/dev-hub/issues/${id}`;
 
-    // Build OG meta content
-    const title = `${issue.ticketCode} — ${issue.title || 'Developer Issue'}`;
+    const ticketCode = issue.ticketCode || '#DEV-???';
+    const title = `${ticketCode} — ${issue.title || 'Developer Issue'}`;
     const priorityEmoji = getPriorityEmoji(issue.priority);
     const statusLabel = getStatusLabel(issue.status);
     const age = getAgeDays(issue.createdAt);
     const category = issue.category?.name || 'General';
-    const description = [
-      `${priorityEmoji} ${issue.priority} Priority  |  📌 ${statusLabel}  |  📁 ${category}`,
-      issue.description && issue.description !== 'No description provided'
-        ? issue.description.substring(0, 160)
-        : null,
-      `👤 ${issue.assignedTeam?.name || 'SVV Dev Team'}  |  ⏱️ Age: ${age} day${age !== 1 ? 's' : ''}`,
+    const team = issue.assignedTeam?.name || 'SVV Dev Team';
+
+    const descSnippet = (issue.description && issue.description !== 'No description provided')
+      ? issue.description.substring(0, 120)
+      : '';
+
+    const ogDescription = [
+      `${priorityEmoji} ${issue.priority} Priority  |  ${statusLabel}  |  ${category}`,
+      descSnippet,
+      `👤 ${team}  |  Age: ${age} day${age !== 1 ? 's' : ''}`,
     ].filter(Boolean).join('\n');
 
-    // OG Image: Use placehold.co to generate a branded image with ticket info
-    // Format: 1200x630 dark navy background, white text
-    const imageText = encodeURIComponent(`SVV Pay • Developer Hub\n${issue.ticketCode}\n${(issue.title || '').substring(0, 50)}\n${priorityEmoji} ${issue.priority}  |  📌 ${statusLabel}`);
-    const ogImageUrl = `https://placehold.co/1200x630/081B3A/ffffff/png?text=${imageText}&font=montserrat`;
+    // Static branded OG image (SVG served inline, converted to img tag)
+    // WhatsApp needs a real PNG/JPG. Use our own /api/og endpoint (see below)
+    // or fallback to a reliable placeholder service
+    const ogImageUrl = `${BASE_URL}/api/og?title=${encodeURIComponent(ticketCode)}&sub=${encodeURIComponent((issue.title || '').substring(0, 45))}&priority=${encodeURIComponent(issue.priority)}&status=${encodeURIComponent(statusLabel)}&cat=${encodeURIComponent(category)}`;
 
-    // Fetch first attachment as OG image if available
+    // Fetch first attachment if available
     const { data: attachments } = await supabase
       .from('DevIssueAttachment')
       .select('url')
       .eq('issueId', id)
       .limit(1);
-    const attachmentImage = attachments?.[0]?.url;
-    const finalOgImage = attachmentImage || ogImageUrl;
+    const finalOgImage = attachments?.[0]?.url || ogImageUrl;
 
-    const safeTitle = escapeHtml(title);
-    const safeDesc = escapeHtml(description);
-    const safeUrl = escapeHtml(portalUrl);
-    const safeImage = escapeHtml(finalOgImage);
+    const safe = (s) => escapeHtml(s);
 
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${safeTitle}</title>
-
-  <!-- ===== Open Graph Meta Tags (WhatsApp, Facebook, LinkedIn) ===== -->
-  <meta property="og:type"        content="website" />
-  <meta property="og:site_name"   content="SVV Pay — Developer Issue Hub" />
-  <meta property="og:title"       content="${safeTitle}" />
-  <meta property="og:description" content="${safeDesc}" />
-  <meta property="og:image"       content="${safeImage}" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:url"         content="${safeUrl}" />
-
-  <!-- ===== Twitter Card Meta Tags ===== -->
-  <meta name="twitter:card"        content="summary_large_image" />
-  <meta name="twitter:title"       content="${safeTitle}" />
-  <meta name="twitter:description" content="${safeDesc}" />
-  <meta name="twitter:image"       content="${safeImage}" />
-
-  <!-- ===== WhatsApp specific: description fallback ===== -->
-  <meta name="description" content="${safeDesc}" />
-
-  <!-- ===== Redirect browsers (not WhatsApp bot) to the portal ===== -->
-  <meta http-equiv="refresh" content="0;url=${safeUrl}" />
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safe(title)}</title>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SVV Pay — Developer Issue Hub">
+  <meta property="og:title" content="${safe(title)}">
+  <meta property="og:description" content="${safe(ogDescription)}">
+  <meta property="og:image" content="${safe(finalOgImage)}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="${safe(portalUrl)}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${safe(title)}">
+  <meta name="twitter:description" content="${safe(ogDescription)}">
+  <meta name="twitter:image" content="${safe(finalOgImage)}">
+  <meta name="description" content="${safe(ogDescription)}">
+  <meta http-equiv="refresh" content="0;url=${safe(portalUrl)}">
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #081B3A;
-      color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      text-align: center;
-      padding: 2rem;
-    }
-    .logo { font-size: 2rem; font-weight: 900; margin-bottom: 0.5rem; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #081B3A; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2rem; }
+    .logo { font-size: 1.75rem; font-weight: 900; letter-spacing: -0.5px; }
     .logo span { color: #3B82F6; }
-    .ticket { font-size: 1.25rem; font-weight: 700; color: #60A5FA; margin: 1rem 0 0.25rem; }
-    .title { font-size: 1.5rem; font-weight: 800; margin-bottom: 1rem; }
-    .badge { display: inline-block; background: rgba(255,255,255,0.1); border-radius: 999px; padding: 0.25rem 0.75rem; font-size: 0.875rem; margin: 0.25rem; }
-    .redirect-link { margin-top: 2rem; color: #93C5FD; text-decoration: none; font-size: 0.875rem; }
-    .spinner { width: 2rem; height: 2rem; border: 3px solid rgba(255,255,255,0.2); border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 2rem auto 0; }
+    .sub { font-size: 0.75rem; color: #93C5FD; margin-top: 0.25rem; }
+    .card { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); border-radius: 1rem; padding: 1.5rem 2rem; margin: 1.5rem 0; max-width: 460px; width: 100%; }
+    .ticket-code { color: #60A5FA; font-weight: 700; font-size: 0.875rem; margin-bottom: 0.5rem; }
+    .ticket-title { font-size: 1.25rem; font-weight: 800; margin-bottom: 1rem; line-height: 1.3; }
+    .badges { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+    .badge { padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: rgba(255,255,255,0.12); }
+    .spinner { width: 2rem; height: 2rem; border: 3px solid rgba(255,255,255,0.15); border-top-color: #3B82F6; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 1.5rem auto 0.75rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .link { color: #93C5FD; font-size: 0.8rem; text-decoration: none; }
   </style>
 </head>
 <body>
   <div class="logo">SVV<span>'PAY</span></div>
-  <div style="font-size:0.75rem; opacity:0.6; margin-bottom:1.5rem">Developer Issue Hub • Track • Collaborate • Resolve</div>
-  <div class="ticket">${escapeHtml(issue.ticketCode)}</div>
-  <div class="title">${escapeHtml(issue.title || 'Developer Issue')}</div>
-  <div>
-    <span class="badge">${priorityEmoji} ${escapeHtml(issue.priority)}</span>
-    <span class="badge">📌 ${escapeHtml(statusLabel)}</span>
-    <span class="badge">📁 ${escapeHtml(category)}</span>
+  <div class="sub">Developer Issue Hub • Track • Collaborate • Resolve</div>
+  <div class="card">
+    <div class="ticket-code">${safe(ticketCode)}</div>
+    <div class="ticket-title">${safe(issue.title || 'Developer Issue')}</div>
+    <div class="badges">
+      <span class="badge">${priorityEmoji} ${safe(issue.priority)}</span>
+      <span class="badge">📌 ${safe(statusLabel)}</span>
+      <span class="badge">📁 ${safe(category)}</span>
+      <span class="badge">👤 ${safe(team)}</span>
+    </div>
   </div>
   <div class="spinner"></div>
-  <a class="redirect-link" href="${safeUrl}">Opening ticket... Click here if not redirected automatically →</a>
-  <script>
-    // Redirect after small delay so OG bots can read meta tags
-    setTimeout(function() {
-      window.location.replace('${safeUrl.replace(/'/g, "\\'")}');
-    }, 300);
-  </script>
+  <a class="link" href="${safe(portalUrl)}">Opening ticket... click here if not redirected →</a>
+  <script>setTimeout(function(){ window.location.replace(${JSON.stringify(portalUrl)}); }, 200);</script>
 </body>
 </html>`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    // Allow WhatsApp bot to cache the OG preview for 1 hour, but serve fresh to users
-    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=3600');
     res.status(200).send(html);
 
   } catch (err) {
     console.error('OG ticket error:', err);
-    res.status(500).send('Internal server error');
+    res.status(500).json({ error: 'Internal server error', detail: err.message });
   }
-};
+}

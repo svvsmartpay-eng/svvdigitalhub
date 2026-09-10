@@ -30,6 +30,13 @@
     "@supabase/supabase-js": "2.44.4",
     "@tanstack/react-query": "^5.102.3",
     "@tanstack/react-query-devtools": "^5.51.0",
+    "@tiptap/extension-link": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-text-align": "^3.31.3",
+    "@tiptap/extension-underline": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "axios": "^1.19.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -61,4 +68,3 @@
     "vite": "^5.3.3"
   }
 }
-

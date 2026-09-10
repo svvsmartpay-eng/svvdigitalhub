@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useOutletContext } from 'react-router-dom';
 import { useDevIssueDetails, usePortalUpdateStatus, usePortalAddComment } from '@/api/devHub.api';
 import { Loader2, ArrowLeft, ChevronLeft, ChevronRight, Upload, CheckCircle2, XCircle, Calendar, Clock, User, Tag, AlertCircle } from 'lucide-react';
+import RichTextEditor, { RichTextView } from '@/components/ui/RichTextEditor';
 
 function getAgeDays(createdAt: string) {
   return Math.floor((new Date().getTime() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
@@ -93,24 +94,14 @@ function AddUpdateModal({ issue, token, onClose, onSuccess }: any) {
           {/* Comment */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-1.5">
-              Comment {isCompletion ? '' : <span className="text-gray-400 font-normal">(Required)</span>}
+              Comment {!isCompletion && <span className="text-red-500">*</span>}
             </label>
-            <div className="border rounded-lg overflow-hidden">
-              <div className="flex gap-1 px-2 py-1 border-b bg-gray-50">
-                <button type="button" className="p-1 hover:bg-gray-200 rounded text-xs font-bold">B</button>
-                <button type="button" className="p-1 hover:bg-gray-200 rounded text-xs italic">I</button>
-                <button type="button" className="p-1 hover:bg-gray-200 rounded text-xs">≡</button>
-                <button type="button" className="p-1 hover:bg-gray-200 rounded text-xs">≡•</button>
-                <button type="button" className="p-1 hover:bg-gray-200 rounded text-xs">🔗</button>
-              </div>
-              <textarea
-                value={form.comment}
-                onChange={e => setForm({ ...form, comment: e.target.value })}
-                placeholder="Describe the update, progress, or findings..."
-                className="w-full p-3 text-sm resize-none focus:outline-none min-h-[80px]"
-                required={!isCompletion}
-              />
-            </div>
+            <RichTextEditor
+              value={form.comment}
+              onChange={(html) => setForm({ ...form, comment: html })}
+              placeholder="Describe the update, progress, or findings in detail..."
+              minHeight="100px"
+            />
           </div>
 
           {/* Completion fields */}
@@ -470,7 +461,9 @@ export default function PortalIssueDetails() {
       <div className="px-4 py-3">
         <h1 className="text-lg font-bold text-[#081B3A] leading-snug">{issue.title || 'Untitled Issue'}</h1>
         {issue.description && issue.description !== 'No description provided' && (
-          <p className="text-sm text-gray-600 mt-1 leading-relaxed">{issue.description}</p>
+          <div className="text-sm text-gray-600 mt-1 leading-relaxed">
+            <RichTextView html={issue.description} />
+          </div>
         )}
       </div>
 

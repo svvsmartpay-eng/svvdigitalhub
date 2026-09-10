@@ -20,6 +20,10 @@
       "destination": "/api/ticket.js"
     },
     {
+      "source": "/api/og",
+      "destination": "/api/og.js"
+    },
+    {
       "source": "/api/v1/(.*)",
       "destination": "https://svv-ams-api-production-044d.up.railway.app/api/v1/$1"
     },

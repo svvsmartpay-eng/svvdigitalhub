@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 export default function CreateIssuePage() {
@@ -118,11 +119,11 @@ export default function CreateIssuePage() {
 
             <div>
               <label className="block text-sm font-bold mb-1">Description (Optional)</label>
-              <Textarea 
-                className="h-32" 
-                value={formData.description} 
-                onChange={e => setFormData({...formData, description: e.target.value})} 
-                placeholder="Detailed steps to reproduce, or feature requirements..." 
+              <RichTextEditor
+                value={formData.description}
+                onChange={(html) => setFormData({ ...formData, description: html })}
+                placeholder="Describe the issue in detail — steps to reproduce, environment, impact..."
+                minHeight="160px"
               />
             </div>
 
