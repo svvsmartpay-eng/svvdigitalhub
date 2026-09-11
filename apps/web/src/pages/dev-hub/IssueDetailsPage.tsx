@@ -15,7 +15,7 @@ import {
   Loader2, ArrowLeft, Send, Edit2, Trash2, Check, X,
   Clock, User, Tag, Paperclip, MessageSquare, ChevronDown,
   AlertCircle, Upload, Film, FileText, ImageIcon, CheckCircle2,
-  RefreshCw, Lock, Rocket, XCircle, Play, Circle
+  RefreshCw, Lock, Rocket, XCircle, Play, Circle, ExternalLink
 } from 'lucide-react';
 
 // ─── Status config ────────────────────────────────────────────
@@ -318,6 +318,12 @@ export default function IssueDetailsPage() {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
+          <Link to={`/public/ticket/${issue.id}`} target="_blank">
+            <Button variant="outline" size="sm" className="text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+              <ExternalLink className="w-4 h-4 mr-1.5" />
+              Public View
+            </Button>
+          </Link>
           <ShareIssueButton issue={issue} allIssues={allIssues} />
           {!isEditing && (
             <Button variant="outline" size="sm" onClick={startEdit}>

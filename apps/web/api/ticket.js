@@ -65,9 +65,8 @@ export default async function handler(req, res) {
     }
 
     const portalToken = token || issue.assignedTeam?.publicToken;
-    const portalUrl = portalToken
-      ? `${BASE_URL}/dev-portal/${portalToken}/issues/${id}`
-      : `${BASE_URL}/settings/dev-hub/issues/${id}`;
+    // Always use the new public ticket view that requires no auth and shows full timeline
+    const portalUrl = `${BASE_URL}/public/ticket/${id}`;
 
     const ticketCode = issue.ticketCode || '#DEV-???';
     const title = `${ticketCode} — ${issue.title || 'Developer Issue'}`;

@@ -66,10 +66,13 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+import PublicTicketView from './pages/dev-hub/PublicTicketView';
+
 const router = createBrowserRouter([
   { path: '/login', element: <PublicRoute><LoginPage /></PublicRoute> },
   { path: '/portal/service/:token', element: <TechnicianPortalPage /> },
-    { path: '/dev-portal/:token', element: <DevPortalLayout />, children: [{ index: true, element: <DevPortalDashboard /> }, { path: 'issues/:id', element: <PortalIssueDetails /> }] },
+  { path: '/public/ticket/:id', element: <PublicTicketView /> },
+  { path: '/dev-portal/:token', element: <DevPortalLayout />, children: [{ index: true, element: <DevPortalDashboard /> }, { path: 'issues/:id', element: <PortalIssueDetails /> }] },
   {
     path: '/',
     element: <ProtectedRoute><AppShell /></ProtectedRoute>,
