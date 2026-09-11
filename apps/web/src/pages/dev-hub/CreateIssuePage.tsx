@@ -1,186 +1,253 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDevCategories, useDevTeams, useCreateDevIssue } from '@/api/devHub.api';
+import { useCreateDevIssue } from '@/api/devHub.api';
 import PageHeader from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import RichTextEditor from '@/components/ui/RichTextEditor';
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import {
+  AlertCircle, CheckCircle2, Loader2, Upload, X, FileText, Film, ImageIcon
+} from 'lucide-react';
 
-export default function CreateIssuePage() {
-  const navigate = useNavigate();
-  const { data: categories, isLoading: isCategoriesLoading } = useDevCategories();
-  const { data: teams } = useDevTeams();
-  const createMutation = useCreateDevIssue();
-
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    categoryId: '',
-    priority: 'MEDIUM',
-    expectedResult: '',
-    currentResult: '',
-    assignedTeamId: '',
+// ── Attachment preview item ──────────────────────────────────
+function AttachmentPreview({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [previewUrl] = useState(() => {
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      return URL.createObjectURL(file);
+    }
+    return null;
   });
 
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const Icon = file.type.startsWith('image/') ? ImageIcon
+    : file.type.startsWith('video/') ? Film : FileText;
 
+  return (
+    <div className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex flex-col items-center">
+      {previewUrl && file.type.startsWith('image/') && (
+        <img src={previewUrl} alt={file.name} className="w-full h-20 object-cover" />
+      )}
+      {previewUrl && file.type.startsWith('video/') && (
+        <video src={previewUrl} className="w-full h-20 object-cover" />
+      )}
+      {!previewUrl && (
+        <div className="w-full h-20 flex items-center justify-center bg-gray-100">
+          <Icon className="w-8 h-8 text-gray-400" />
+        </div>
+      )}
+      <p className="text-[10px] text-gray-600 px-1 py-1 text-center truncate w-full">
+        {file.name}
+      </p>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute top-1 right-1 bg-white/90 rounded-full p-0.5 shadow opacity-0 group-hover:opacity-100 transition-opacity"
+      >
+        <X className="w-3.5 h-3.5 text-gray-600" />
+      </button>
+    </div>
+  );
+}
+
+// ── Priority option card ─────────────────────────────────────
+function PriorityCard({
+  value, label, color, selected, onClick,
+}: {
+  value: string; label: string; color: string; selected: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 py-2.5 px-3 rounded-lg border-2 text-sm font-bold transition-all ${
+        selected ? `border-current bg-current/10 ${color}` : 'border-gray-200 text-gray-500 hover:border-gray-300'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────
+export default function CreateIssuePage() {
+  const navigate = useNavigate();
+  const createMutation = useCreateDevIssue();
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [priority, setPriority] = useState('MEDIUM');
+  const [files, setFiles] = useState<File[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  // ── File handling
+  const addFiles = useCallback((newFiles: File[]) => {
+    setFiles(prev => {
+      const existing = new Set(prev.map(f => f.name + f.size));
+      const unique = newFiles.filter(f => !existing.has(f.name + f.size));
+      return [...prev, ...unique].slice(0, 10); // max 10 files
+    });
+  }, []);
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addFiles(Array.from(e.target.files));
+    e.target.value = ''; // reset so same file can be re-added
+  };
+
+  // ── Drag & drop
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = () => setIsDragging(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) addFiles(Array.from(e.dataTransfer.files));
+  };
+
+  // ── Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
-    setSuccessMessage(null);
+    if (!title.trim()) { setError('Please enter a ticket title.'); return; }
 
-    const fallbackCatId = formData.categoryId || categories?.[0]?.id || '';
-
-    const payload = {
-      ...formData,
-      title: formData.title.trim() || 'Untitled Issue',
-      description: formData.description.trim() || 'No description provided',
-      categoryId: fallbackCatId,
-    };
-
+    setError(null);
     try {
-      await createMutation.mutateAsync(payload);
-      setSuccessMessage('Ticket created successfully! Redirecting...');
-      setTimeout(() => {
-        navigate('/settings/dev-hub');
-      }, 400);
+      await createMutation.mutateAsync({
+        title: title.trim(),
+        description,
+        priority,
+        attachmentFiles: files,
+      });
+      setSuccess(true);
+      setTimeout(() => navigate('/settings/dev-hub'), 500);
     } catch (err: any) {
-      console.error('Failed to create ticket:', err);
-      setErrorMessage(err?.message || 'Failed to create ticket. Please check connection and try again.');
+      setError(err?.message || 'Failed to create ticket. Please try again.');
     }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <PageHeader title="Create Developer Issue" subtitle="Log a new task, bug, or feature request. All fields are optional." />
-      
+    <div className="max-w-2xl mx-auto space-y-6">
+      <PageHeader title="Create Ticket" subtitle="Report a bug, task, or feature request" />
+
       <Card>
         <CardContent className="p-6">
-          {errorMessage && (
-            <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+          {success && (
+            <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm flex gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Ticket created! Redirecting…</span>
             </div>
           )}
 
-          {successMessage && (
-            <div className="mb-4 p-3 rounded-md bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{successMessage}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Title */}
             <div>
-              <label className="block text-sm font-bold mb-1">Issue Title (Optional)</label>
-              <Input 
-                value={formData.title} 
-                onChange={e => setFormData({...formData, title: e.target.value})} 
-                placeholder="Short summary of the issue (or leave blank for Untitled)" 
+              <label className="block text-sm font-bold mb-1.5">
+                Ticket Title <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Short summary of the issue…"
+                className="text-base"
+                required
               />
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold mb-1">Category (Optional)</label>
-                <select 
-                  className="w-full p-2 border rounded-md bg-white" 
-                  value={formData.categoryId} 
-                  onChange={e => setFormData({...formData, categoryId: e.target.value})}
-                >
-                  <option value="">
-                    {isCategoriesLoading ? 'Loading categories...' : 'Auto / First Category'}
-                  </option>
-                  {categories?.map((c: any) => (
-                    <option key={c.id} value={c.id}>
-                      {c.group ? `${c.group} - ` : ''}{c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-1">Priority (Optional)</label>
-                <select 
-                  className="w-full p-2 border rounded-md bg-white" 
-                  value={formData.priority} 
-                  onChange={e => setFormData({...formData, priority: e.target.value})}
-                >
-                  <option value="CRITICAL">Critical (1 Day SLA)</option>
-                  <option value="HIGH">High (3 Days SLA)</option>
-                  <option value="MEDIUM">Medium (7 Days SLA)</option>
-                  <option value="LOW">Low (15 Days SLA)</option>
-                </select>
+
+            {/* Priority */}
+            <div>
+              <label className="block text-sm font-bold mb-2">Priority</label>
+              <div className="flex gap-2">
+                <PriorityCard value="LOW" label="🟢 Low" color="text-green-600" selected={priority === 'LOW'} onClick={() => setPriority('LOW')} />
+                <PriorityCard value="MEDIUM" label="🟡 Medium" color="text-yellow-600" selected={priority === 'MEDIUM'} onClick={() => setPriority('MEDIUM')} />
+                <PriorityCard value="HIGH" label="🟠 High" color="text-orange-600" selected={priority === 'HIGH'} onClick={() => setPriority('HIGH')} />
+                <PriorityCard value="CRITICAL" label="🔴 Critical" color="text-red-600" selected={priority === 'CRITICAL'} onClick={() => setPriority('CRITICAL')} />
               </div>
             </div>
 
+            {/* Description */}
             <div>
-              <label className="block text-sm font-bold mb-1">Description (Optional)</label>
+              <label className="block text-sm font-bold mb-1.5">
+                Description <span className="text-red-500">*</span>
+              </label>
               <RichTextEditor
-                value={formData.description}
-                onChange={(html) => setFormData({ ...formData, description: html })}
-                placeholder="Describe the issue in detail — steps to reproduce, environment, impact..."
-                minHeight="160px"
+                value={description}
+                onChange={setDescription}
+                placeholder="Describe the issue — steps to reproduce, environment, screenshots needed…"
+                minHeight="140px"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold mb-1">Current Result (Optional)</label>
-                <Textarea 
-                  value={formData.currentResult} 
-                  onChange={e => setFormData({...formData, currentResult: e.target.value})} 
-                  placeholder="What is happening right now?" 
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-1">Expected Result (Optional)</label>
-                <Textarea 
-                  value={formData.expectedResult} 
-                  onChange={e => setFormData({...formData, expectedResult: e.target.value})} 
-                  placeholder="What should happen instead?" 
-                />
-              </div>
-            </div>
-
+            {/* Attachment Upload */}
             <div>
-              <label className="block text-sm font-bold mb-1">Assign Developer Team (Optional)</label>
-              <select 
-                className="w-full p-2 border rounded-md bg-white" 
-                value={formData.assignedTeamId} 
-                onChange={e => setFormData({...formData, assignedTeamId: e.target.value})}
+              <label className="block text-sm font-bold mb-1.5">
+                Attachments <span className="text-gray-400 font-normal">(Images, Videos, PDFs — max 10 files)</span>
+              </label>
+
+              {/* Drop zone */}
+              <div
+                ref={dropRef}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+                  isDragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50'
+                }`}
+                onClick={() => document.getElementById('file-input')?.click()}
               >
-                <option value="">Unassigned</option>
-                {teams?.map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+                <Upload className={`w-8 h-8 mx-auto mb-2 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
+                <p className="text-sm text-gray-600 font-medium">
+                  {isDragging ? 'Drop files here…' : 'Drag & drop files or click to browse'}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Images · Videos · PDFs · Documents</p>
+
+                {/* Mobile camera capture */}
+                <div className="flex justify-center gap-2 mt-3" onClick={e => e.stopPropagation()}>
+                  <label className="text-xs bg-white border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-50 font-medium flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    Gallery
+                    <input id="file-input" type="file" multiple accept="image/*,video/*,application/pdf,.doc,.docx" className="hidden" onChange={handleFileInput} />
+                  </label>
+                  <label className="text-xs bg-white border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-gray-50 font-medium flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    Camera
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileInput} />
+                  </label>
+                </div>
+              </div>
+
+              {/* Preview grid */}
+              {files.length > 0 && (
+                <div className="mt-3 grid grid-cols-4 sm:grid-cols-5 gap-2">
+                  {files.map((file, i) => (
+                    <AttachmentPreview
+                      key={`${file.name}-${i}`}
+                      file={file}
+                      onRemove={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="pt-4 flex justify-end gap-2 border-t">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => navigate('/settings/dev-hub')}
-              >
+            {/* Actions */}
+            <div className="pt-2 flex justify-end gap-3 border-t">
+              <Button type="button" variant="outline" onClick={() => navigate('/settings/dev-hub')}>
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
-                className="bg-blue-600 hover:bg-blue-700 text-white" 
-                disabled={createMutation.isPending}
+              <Button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white min-w-[140px]"
+                disabled={createMutation.isPending || !title.trim()}
               >
                 {createMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating Ticket...
-                  </>
-                ) : (
-                  'Create Ticket'
-                )}
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating…</>
+                ) : 'Create Ticket'}
               </Button>
             </div>
           </form>
