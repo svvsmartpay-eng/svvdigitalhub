@@ -5,8 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import PageHeader from '@/components/shared/PageHeader';
-import { Loader2, Copy, ExternalLink, Trash2 } from 'lucide-react';
+import { Loader2, Copy, ExternalLink, Trash2, Edit2, X, Check } from 'lucide-react';
 
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -26,6 +25,11 @@ export default function ManageTeams() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ name: '', contactEmail: '', contactPhone: '' });
   const [saving, setSaving] = useState(false);
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', contactEmail: '', contactPhone: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,14 +56,37 @@ export default function ManageTeams() {
     }
   };
 
-  const copyLink = (token: string) => {
-    const url = `${window.location.origin}/dev-portal/${token}`;
-    navigator.clipboard.writeText(url);
-    alert('Public Developer Link copied to clipboard!');
+  const handleEditClick = (t: any) => {
+    setEditingId(t.id);
+    setEditForm({
+      name: t.name || '',
+      contactEmail: t.contactEmail || '',
+      contactPhone: t.contactPhone || ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editForm.name.trim()) return;
+    setSavingEdit(true);
+    try {
+      await supabase.from('DevTeam').update({
+        name: editForm.name.trim(),
+        contactEmail: editForm.contactEmail?.trim() || null,
+        contactPhone: editForm.contactPhone?.trim() || null,
+        updatedAt: new Date().toISOString()
+      }).eq('id', editingId);
+      
+      await queryClient.invalidateQueries({ queryKey: ['dev-teams'] });
+      setEditingId(null);
+    } catch (err) {
+      console.error('Failed to update vendor:', err);
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this vendor?")) return;
+    if (!window.confirm("Are you sure you want to delete this vendor? This will NOT delete their existing tickets, but may break assignment views.")) return;
     try {
       await supabase.from('DevTeam').delete().eq('id', id);
       await queryClient.invalidateQueries({ queryKey: ['dev-teams'] });
@@ -71,6 +98,13 @@ export default function ManageTeams() {
   return (
     <div className="max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Manage Vendors</h1>
+      
+      <div className="bg-blue-50 border border-blue-200 text-blue-800 text-sm p-4 rounded-xl mb-6">
+        <strong>💡 Pro Tip for Vendor Access:</strong><br />
+        To allow multiple people from the same vendor to securely access tickets, just enter all their Google email addresses in the <strong>Authorized Emails</strong> field, separated by commas.<br/>
+        <em>Example: <code>developer@vendor.com, manager@vendor.com</code></em>
+      </div>
+
       <Card className="mb-8">
         <CardHeader>
           <CardTitle>Add New Vendor</CardTitle>
@@ -110,34 +144,72 @@ export default function ManageTeams() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         {isLoading ? (
-          <div className="py-8 text-center text-gray-400 col-span-2">Loading vendors...</div>
+          <div className="py-8 text-center text-gray-400">Loading vendors...</div>
         ) : teams?.length === 0 ? (
-          <div className="py-8 text-center text-gray-400 col-span-2">No vendors found.</div>
+          <div className="py-8 text-center text-gray-400">No vendors found.</div>
         ) : (
           teams?.map((t: any) => (
             <Card key={t.id}>
-              <CardContent className="p-4 flex items-start justify-between">
-                <div>
-                  <h4 className="font-bold text-lg mb-2">{t.name}</h4>
-                  <div className="text-xs text-gray-500 space-y-1">
-                    <p><strong className="text-gray-700">Contact/Mobile:</strong> {t.contactPhone || 'N/A'}</p>
-                    <div>
-                      <strong className="text-gray-700 block mb-1">Authorized Emails:</strong>
-                      <div className="flex flex-wrap gap-1">
-                        {t.contactEmail ? t.contactEmail.split(',').map((e: string, i: number) => (
-                          <span key={i} className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">{e.trim()}</span>
-                        )) : <span className="text-gray-400">None</span>}
+              <CardContent className="p-5 flex flex-col md:flex-row md:items-start justify-between gap-4">
+                
+                {/* View Mode */}
+                {editingId !== t.id && (
+                  <>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-lg mb-2">{t.name}</h4>
+                      <div className="text-sm text-gray-500 space-y-2">
+                        <p><strong className="text-gray-700">Contact/Mobile:</strong> {t.contactPhone || 'N/A'}</p>
+                        <div>
+                          <strong className="text-gray-700 block mb-1">Authorized Emails:</strong>
+                          <div className="flex flex-wrap gap-1">
+                            {t.contactEmail ? t.contactEmail.split(',').map((e: string, i: number) => (
+                              <span key={i} className="bg-slate-100 text-slate-700 px-2 py-0.5 text-xs rounded border border-slate-200">{e.trim()}</span>
+                            )) : <span className="text-gray-400 text-xs italic">No emails configured</span>}
+                          </div>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex flex-row md:flex-col gap-2 shrink-0">
+                      <Button variant="outline" size="sm" onClick={() => handleEditClick(t)}>
+                        <Edit2 className="w-4 h-4 mr-1.5" /> Edit
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50 border border-transparent" onClick={() => handleDelete(t.id)}>
+                        <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {/* Edit Mode */}
+                {editingId === t.id && (
+                  <div className="flex-1 w-full flex flex-col gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 block mb-1">Vendor Name</label>
+                        <Input value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600 block mb-1">Contact/Mobile</label>
+                        <Input value={editForm.contactPhone} onChange={e => setEditForm({...editForm, contactPhone: e.target.value})} />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-xs font-semibold text-gray-600 block mb-1">Authorized Emails (Comma separated)</label>
+                        <Input value={editForm.contactEmail} onChange={e => setEditForm({...editForm, contactEmail: e.target.value})} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2 border-t pt-3">
+                      <Button size="sm" onClick={handleSaveEdit} disabled={!editForm.name.trim() || savingEdit} className="bg-green-600 hover:bg-green-700 text-white">
+                        {savingEdit ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Check className="w-4 h-4 mr-1.5" />}
+                        Save Changes
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingId(null)} disabled={savingEdit}>
+                        <X className="w-4 h-4 mr-1.5" /> Cancel
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                <div className="flex flex-col gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(t.id)}>
-                    <Trash2 className="w-4 h-4 mr-1" /> Delete
-                  </Button>
-                </div>
+                )}
               </CardContent>
             </Card>
           ))

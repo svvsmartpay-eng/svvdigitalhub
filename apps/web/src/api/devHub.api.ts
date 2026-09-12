@@ -168,6 +168,7 @@ export function useCreateDevIssue() {
       description: string;
       priority: string;
       attachmentFiles?: File[];
+      assignedTeamId?: string;
     }) => {
       // 1. Collision-safe ticket code
       let ticketCode = '';
@@ -203,6 +204,7 @@ export function useCreateDevIssue() {
         categoryId: catId,
         priority: data.priority || 'MEDIUM',
         status: 'OPEN',
+        assignedTeamId: data.assignedTeamId || null,
         createdBy: 'SVV Admin',
         createdAt: nowIso,
         updatedAt: nowIso,

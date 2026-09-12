@@ -1,13 +1,13 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCreateDevIssue } from '@/api/devHub.api';
+import { useCreateDevIssue, useDevTeams } from '@/api/devHub.api';
 import PageHeader from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import {
-  AlertCircle, CheckCircle2, Loader2, Upload, X, FileText, Film, ImageIcon
+  AlertCircle, CheckCircle2, Loader2, Upload, X, FileText, Film, ImageIcon, Users
 } from 'lucide-react';
 
 // ── Attachment preview item ──────────────────────────────────
@@ -72,11 +72,13 @@ function PriorityCard({
 export default function CreateIssuePage() {
   const navigate = useNavigate();
   const createMutation = useCreateDevIssue();
+  const { data: vendors } = useDevTeams();
   const dropRef = useRef<HTMLDivElement>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
+  const [assignedTeamId, setAssignedTeamId] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +111,7 @@ export default function CreateIssuePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) { setError('Please enter a ticket title.'); return; }
+    if (!assignedTeamId) { setError('Please select a vendor.'); return; }
 
     setError(null);
     try {
@@ -116,6 +119,7 @@ export default function CreateIssuePage() {
         title: title.trim(),
         description,
         priority,
+        assignedTeamId,
         attachmentFiles: files,
       });
       setSuccess(true);
@@ -145,6 +149,25 @@ export default function CreateIssuePage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Vendor Selector */}
+            <div>
+              <label className="block text-sm font-bold mb-1.5 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-blue-500" />
+                Select Vendor <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={assignedTeamId}
+                onChange={e => setAssignedTeamId(e.target.value)}
+                className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f]"
+                required
+              >
+                <option value="" disabled>-- Select a Vendor --</option>
+                {vendors?.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Title */}
             <div>
               <label className="block text-sm font-bold mb-1.5">
