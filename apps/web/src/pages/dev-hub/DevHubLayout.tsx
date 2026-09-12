@@ -13,7 +13,7 @@ export default function DevHubLayout() {
     { name: 'Completed Issues', path: '/settings/dev-hub/completed', icon: CheckCircle2 },
     { name: 'Overdue Issues', path: '/settings/dev-hub/overdue', icon: AlertTriangle },
     { name: 'Categories', path: '/settings/dev-hub/categories', icon: Tags },
-    { name: 'Developer Teams', path: '/settings/dev-hub/teams', icon: Users },
+    { name: 'Vendors', path: '/settings/dev-hub/teams', icon: Users },
     { name: 'Reports', path: '/settings/dev-hub/reports', icon: FileBarChart },
   ];
 
