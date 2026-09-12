@@ -1,27 +1,32 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useDevIssueDetails } from '@/api/devHub.api';
+import { useDevIssueDetails, useVendorTickets, useAddDevIssueComment } from '@/api/devHub.api';
 import { RichTextView } from '@/components/ui/RichTextEditor';
+import RichTextEditor from '@/components/ui/RichTextEditor';
+import { Button } from '@/components/ui/button';
+import { GoogleLogin } from '@react-oauth/google';
+import { jwtDecode } from 'jwt-decode';
 import {
   Loader2, AlertCircle, Clock, User, Tag, Paperclip,
   ExternalLink, MessageSquare, CheckCircle2, XCircle,
-  RefreshCw, Play, Lock, Rocket, Circle, Film, FileText, ImageIcon
+  RefreshCw, Play, Lock, Rocket, Circle, Film, FileText, ImageIcon, X
 } from 'lucide-react';
 
-// ── Status config ─────────────────────────────────────────────
+// ── Status config ──────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   OPEN:             { label: 'Open',               color: 'text-blue-700',   bg: 'bg-blue-100' },
   ASSIGNED:         { label: 'Assigned',           color: 'text-purple-700', bg: 'bg-purple-100' },
   IN_PROGRESS:      { label: 'In Progress',        color: 'text-orange-700', bg: 'bg-orange-100' },
+  WAITING_VENDOR:   { label: 'Waiting Vendor',     color: 'text-amber-700',  bg: 'bg-amber-100' },
+  WAITING_CUSTOMER: { label: 'Waiting Customer',   color: 'text-pink-700',   bg: 'bg-pink-100' },
+  RESOLVED:         { label: 'Resolved',           color: 'text-green-700',  bg: 'bg-green-100' },
+  REOPENED:         { label: 'Reopened',           color: 'text-orange-700', bg: 'bg-orange-100' },
+  CLOSED:           { label: 'Closed',             color: 'text-gray-600',   bg: 'bg-gray-200' },
+  // Legacy
   DEV_COMPLETED:    { label: 'Dev Completed',      color: 'text-teal-700',   bg: 'bg-teal-100' },
   TESTING:          { label: 'Testing',            color: 'text-yellow-700', bg: 'bg-yellow-100' },
   TEST_FAILED:      { label: 'Test Failed',        color: 'text-red-700',    bg: 'bg-red-100' },
-  REOPENED:         { label: 'Reopened',           color: 'text-orange-700', bg: 'bg-orange-100' },
   READY_FOR_DEPLOY: { label: 'Ready for Deploy',   color: 'text-indigo-700', bg: 'bg-indigo-100' },
-  CLOSED:           { label: 'Closed',             color: 'text-gray-600',   bg: 'bg-gray-200' },
-  NEED_INFO:        { label: 'Need Info',          color: 'text-amber-700',  bg: 'bg-amber-100' },
-  COMPLETED_BY_DEV: { label: 'Dev Completed',      color: 'text-teal-700',   bg: 'bg-teal-100' },
-  VERIFIED_BY_SVV:  { label: 'Verified',           color: 'text-green-700',  bg: 'bg-green-100' },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string; strip: string }> = {
@@ -116,11 +121,120 @@ function AttachmentItem({ att }: { att: any }) {
   );
 }
 
+// ── Vendor Summary Card ───────────────────────────────────────
+function VendorSummaryCard({ vendorId, vendorName }: { vendorId: string; vendorName: string }) {
+  const { data: tickets, isLoading } = useVendorTickets(vendorId);
+
+  if (isLoading || !tickets) return null;
+
+  const total = tickets.length;
+  const open = tickets.filter(t => ['OPEN', 'ASSIGNED'].includes(t.status)).length;
+  const inProgress = tickets.filter(t => t.status === 'IN_PROGRESS').length;
+  const waiting = tickets.filter(t => ['WAITING_VENDOR', 'WAITING_CUSTOMER'].includes(t.status)).length;
+  const resolved = tickets.filter(t => t.status === 'RESOLVED').length;
+  const closed = tickets.filter(t => t.status === 'CLOSED').length;
+  
+  const overdueCount = tickets.filter(t => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'CLOSED').length;
+  const openTickets = tickets.filter(t => !['CLOSED', 'RESOLVED'].includes(t.status)).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const oldestOpen = openTickets.length > 0 ? Math.floor((Date.now() - new Date(openTickets[0].createdAt).getTime()) / 86400000) + ' Days' : 'N/A';
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+      <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+        <User className="w-5 h-5 text-blue-600" />
+        {vendorName} — Vendor Summary
+      </h3>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100"><p className="text-xs text-blue-600 font-bold uppercase">Total</p><p className="text-2xl font-black text-blue-900">{total}</p></div>
+        <div className="bg-orange-50 p-3 rounded-xl border border-orange-100"><p className="text-xs text-orange-600 font-bold uppercase">Open/Assigned</p><p className="text-2xl font-black text-orange-900">{open}</p></div>
+        <div className="bg-amber-50 p-3 rounded-xl border border-amber-100"><p className="text-xs text-amber-600 font-bold uppercase">In Progress</p><p className="text-2xl font-black text-amber-900">{inProgress}</p></div>
+        <div className="bg-pink-50 p-3 rounded-xl border border-pink-100"><p className="text-xs text-pink-600 font-bold uppercase">Waiting Resp.</p><p className="text-2xl font-black text-pink-900">{waiting}</p></div>
+        <div className="bg-teal-50 p-3 rounded-xl border border-teal-100"><p className="text-xs text-teal-600 font-bold uppercase">Resolved</p><p className="text-2xl font-black text-teal-900">{resolved}</p></div>
+        <div className="bg-gray-50 p-3 rounded-xl border border-gray-200"><p className="text-xs text-gray-500 font-bold uppercase">Closed</p><p className="text-2xl font-black text-gray-700">{closed}</p></div>
+        <div className="bg-purple-50 p-3 rounded-xl border border-purple-100"><p className="text-xs text-purple-600 font-bold uppercase">Oldest Open</p><p className="text-xl font-black text-purple-900 mt-1">{oldestOpen}</p></div>
+        <div className="bg-red-50 p-3 rounded-xl border border-red-100"><p className="text-xs text-red-600 font-bold uppercase">Overdue</p><p className="text-2xl font-black text-red-900">{overdueCount}</p></div>
+      </div>
+    </div>
+  );
+}
+
+// ── Comment Composer ──────────────────────────────────────────
+function VendorCommentComposer({ issueId, vendorName, onSuccess }: { issueId: string; vendorName: string; onSuccess: () => void }) {
+  const addComment = useAddDevIssueComment();
+  const [text, setText] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const handleSubmit = async () => {
+    const plainText = text.replace(/<[^>]*>/g, '').trim();
+    if (!plainText && files.length === 0) return;
+    setUploading(true);
+    try {
+      await addComment.mutateAsync({ id: issueId, comment: text, attachmentFiles: files, authorType: 'VENDOR', authorName: vendorName });
+      setText('');
+      setFiles([]);
+      onSuccess();
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mt-6 space-y-4">
+      <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+        <MessageSquare className="w-4 h-4 text-blue-600" /> Reply to Admin
+      </h4>
+      <RichTextEditor value={text} onChange={setText} placeholder="Type your reply to SVV Admin..." minHeight="120px" />
+
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map((f, i) => (
+            <div key={i} className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2 py-1 text-xs border border-gray-200">
+              <Paperclip className="w-3 h-3 text-gray-500" />
+              <span className="truncate max-w-[120px]">{f.name}</span>
+              <button onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}>
+                <X className="w-3 h-3 text-gray-400 hover:text-red-500" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-between items-center border-t border-gray-100 pt-3">
+        <label className="cursor-pointer text-xs font-semibold text-gray-600 hover:text-blue-600 flex items-center gap-1.5 transition-colors bg-gray-50 hover:bg-blue-50 px-3 py-2 rounded-lg border border-gray-200 hover:border-blue-200">
+          <Paperclip className="w-4 h-4" /> Attach Files (Images/PDFs/Video)
+          <input type="file" multiple accept="image/*,video/*,application/pdf" className="hidden"
+            onChange={e => { if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files!)]); }} />
+        </label>
+        <Button
+          onClick={handleSubmit}
+          disabled={uploading || addComment.isPending || (!text.replace(/<[^>]*>/g, '').trim() && files.length === 0)}
+          className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+        >
+          {uploading || addComment.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+          Post Reply
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ── Timeline Entry ─────────────────────────────────────────────
 function TimelineEntry({ entry, isLast }: { entry: any; isLast: boolean }) {
+  const getTimelineStyle = (action: string) => {
+    const l = action.toLowerCase();
+    if (l.includes('created') || l.includes('opened')) return { dot: 'bg-blue-500', ring: 'ring-blue-100' };
+    if (l.includes('vendor')) return { dot: 'bg-purple-500', ring: 'ring-purple-100' };
+    if (l.includes('admin comment') || l.includes('comment added')) return { dot: 'bg-indigo-500', ring: 'ring-indigo-100' };
+    if (l.includes('resolved') || l.includes('completed')) return { dot: 'bg-green-500', ring: 'ring-green-100' };
+    if (l.includes('failed') || l.includes('overdue')) return { dot: 'bg-red-500', ring: 'ring-red-100' };
+    return { dot: 'bg-gray-400', ring: 'ring-gray-100' };
+  };
+
   const { dot, ring } = getTimelineStyle(entry.action);
   const isAdminAction = entry.authorType === 'SVV_ADMIN';
-  const isComment = entry.action === 'Comment Added' || entry.action === 'Developer Comment' || entry.action === 'Admin Comment';
+  const isVendorAction = entry.authorType === 'VENDOR';
+  const isComment = entry.action.includes('Comment');
 
   // Extract attachment URLs from comment if embedded
   const attachmentMatch = entry.comment?.match(/\[Attachments: ([^\]]+)\]/);
@@ -138,73 +252,67 @@ function TimelineEntry({ entry, isLast }: { entry: any; isLast: boolean }) {
       </div>
 
       {/* Content */}
-      <div className="pb-6 flex-1 min-w-0">
-        {/* Header */}
-        <div className="flex flex-wrap items-center gap-2 mb-1">
-          <span className={`text-sm font-bold ${isAdminAction ? 'text-gray-900' : 'text-purple-800'}`}>
-            {entry.authorName}
+      <div className="flex-1 pb-6 min-w-0">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-sm font-semibold ${isAdminAction ? 'text-blue-900' : isVendorAction ? 'text-purple-900' : 'text-gray-900'}`}>
+              {entry.authorName}
+            </span>
+            <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${isAdminAction ? 'bg-blue-100 text-blue-700' : isVendorAction ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+              {isAdminAction ? 'Admin' : isVendorAction ? 'Vendor' : 'System'}
+            </span>
+            {entry.newStatus && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${STATUS_CONFIG[entry.newStatus]?.bg} ${STATUS_CONFIG[entry.newStatus]?.color}`}>
+                {STATUS_CONFIG[entry.newStatus]?.label || entry.newStatus}
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-gray-400 shrink-0 mt-0.5">
+            {new Date(entry.createdAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </span>
-          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-            isAdminAction ? 'bg-gray-100 text-gray-600' : 'bg-purple-100 text-purple-700'
-          }`}>
-            {isAdminAction ? '⚙ Admin' : '👨‍💻 Developer'}
-          </span>
-          {entry.newStatus && <StatusBadge status={entry.newStatus} />}
-          <span className="text-xs text-gray-400 ml-auto">{fmtDate(entry.createdAt)}</span>
         </div>
 
         {/* Action label */}
-        <p className={`text-sm font-semibold mb-1.5 ${
-          isAdminAction ? 'text-blue-700' : 'text-purple-700'
-        }`}>
-          {entry.action}
-        </p>
+        <p className="text-sm font-medium text-gray-500 mb-1">{entry.action}</p>
 
-        {/* Comment text */}
+        {/* Comment */}
         {cleanComment && (
-          <div className={`rounded-xl p-3 text-sm ${
-            isComment
-              ? isAdminAction
-                ? 'bg-blue-50 border border-blue-100'
-                : 'bg-purple-50 border border-purple-100'
-              : 'bg-gray-50 border border-gray-100'
-          }`}>
+          <div className={`text-sm mt-2 ${isComment ? (isAdminAction ? 'bg-blue-50/50 border border-blue-100' : 'bg-purple-50/50 border border-purple-100') + ' rounded-xl p-4 shadow-sm' : 'text-gray-700'}`}>
             <RichTextView html={cleanComment} />
           </div>
         )}
 
-        {/* Embedded attachment URLs from comment */}
+        {/* Embedded Attachments inside Comment */}
         {commentUrls.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
             {commentUrls.map((url, i) => {
-              const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
-              return isImg ? (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                  <img src={url} alt="attachment" className="w-24 h-24 object-cover rounded-lg border border-gray-200 hover:opacity-90" />
-                </a>
-              ) : (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-blue-600 hover:bg-blue-50">
-                  <FileText className="w-3.5 h-3.5" />
-                  Attachment {i + 1}
+              const isImage = url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.includes('token='); // Supabase urls
+              const isVideo = url.match(/\.(mp4|webm|ogg)$/i);
+              const isPdf = url.match(/\.pdf$/i);
+              
+              if (isImage) {
+                return <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border border-gray-200 hover:border-blue-400 transition-colors"><img src={url} alt="Attachment" className="w-full h-24 object-cover" /></a>;
+              } else if (isVideo) {
+                return <video key={i} src={url} controls className="w-full h-24 rounded-lg bg-black object-cover" />;
+              } else if (isPdf) {
+                return <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-blue-50 transition-colors h-24"><FileText className="w-6 h-6 text-red-500" /><span className="text-xs font-medium text-gray-700 break-all line-clamp-3">View PDF Document</span></a>;
+              }
+              return (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-blue-50 transition-colors h-24 text-xs font-medium text-gray-600">
+                  <ExternalLink className="w-4 h-4" /> Open File
                 </a>
               );
             })}
           </div>
         )}
 
-        {/* Root cause / fix details box */}
+        {/* Root cause / fix details / deployment */}
         {(entry.rootCause || entry.fixDetails || entry.deploymentDetails) && (
-          <div className="mt-2 bg-teal-50 border border-teal-200 rounded-xl p-3 space-y-1.5 text-sm">
-            {entry.rootCause && (
-              <div><span className="font-bold text-teal-800">Root Cause:</span> <span className="text-teal-700">{entry.rootCause}</span></div>
-            )}
-            {entry.fixDetails && (
-              <div><span className="font-bold text-teal-800">Fix Applied:</span> <span className="text-teal-700">{entry.fixDetails}</span></div>
-            )}
-            {entry.deploymentDetails && (
-              <div><span className="font-bold text-teal-800">Deployment:</span> <span className="text-teal-700">{entry.deploymentDetails}</span></div>
-            )}
+          <div className="mt-3 bg-teal-50 border border-teal-100 rounded-xl p-4 space-y-2 text-sm">
+            {entry.rootCause && <div><span className="font-bold text-teal-800">Root Cause:</span> <span className="text-teal-700">{entry.rootCause}</span></div>}
+            {entry.fixDetails && <div><span className="font-bold text-teal-800">Fix Applied:</span> <span className="text-teal-700">{entry.fixDetails}</span></div>}
+            {entry.deploymentDetails && <div><span className="font-bold text-teal-800">Deployment:</span> <span className="text-teal-700">{entry.deploymentDetails}</span></div>}
           </div>
         )}
       </div>
@@ -215,9 +323,14 @@ function TimelineEntry({ entry, isLast }: { entry: any; isLast: boolean }) {
 // ── Main Page ─────────────────────────────────────────────────
 export default function PublicTicketView() {
   const { id } = useParams<{ id: string }>();
-  const { data: issue, isLoading } = useDevIssueDetails(id as string);
+  const { data: issue, isLoading, refetch } = useDevIssueDetails(id as string);
+  
+  // Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [vendorEmail, setVendorEmail] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  
   const [copiedLink, setCopiedLink] = useState(false);
-
   const publicUrl = `${window.location.origin}/public/ticket/${id}`;
 
   const copyLink = () => {
@@ -226,13 +339,33 @@ export default function PublicTicketView() {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const handleGoogleSuccess = (credentialResponse: any) => {
+    try {
+      const decoded: any = jwtDecode(credentialResponse.credential);
+      const email = decoded.email;
+      
+      const vendorEmailsStr = issue?.assignedTeam?.contactEmail || '';
+      const authorizedEmails = vendorEmailsStr.split(',').map((e: string) => e.trim().toLowerCase());
+      
+      if (authorizedEmails.includes(email.toLowerCase())) {
+        setIsAuthenticated(true);
+        setVendorEmail(email);
+        setAuthError(null);
+      } else {
+        setAuthError(`Email ${email} is not authorized for this vendor. Please ask the Admin to add it.`);
+      }
+    } catch (err) {
+      setAuthError("Failed to decode Google token.");
+    }
+  };
+
   // ── Loading state
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Loading ticket…</p>
+          <p className="text-gray-500 text-sm font-medium">Loading ticket…</p>
         </div>
       </div>
     );
@@ -251,9 +384,59 @@ export default function PublicTicketView() {
     );
   }
 
+  // ── Vendor Auth Gateway
+  if (!isAuthenticated && issue.assignedTeamId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <nav className="bg-[#081B3A] text-white shadow-lg py-3 px-4 flex items-center justify-center">
+          <div className="flex items-center gap-3">
+            <div><span className="font-black text-lg">SVV</span><span className="font-black text-lg text-blue-400">&apos;PAY</span></div>
+            <div className="w-px h-6 bg-white/20" />
+            <p className="text-xs font-bold text-blue-200">Vendor Access</p>
+          </div>
+        </nav>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 max-w-sm w-full text-center">
+            <Lock className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Secure Vendor Access</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              This ticket is assigned to <strong>{issue.assignedTeam.name}</strong>. Please sign in with an authorized Google account to view it.
+            </p>
+            <div className="flex justify-center mb-4">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setAuthError("Google Login Failed.")}
+                useOneTap
+              />
+            </div>
+            {authError && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-100 p-3 rounded-lg text-left">
+                <strong>Access Denied:</strong><br/>{authError}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const pCfg = PRIORITY_CONFIG[issue.priority] || { label: issue.priority, color: 'text-gray-700 bg-gray-100', strip: 'bg-gray-400' };
   const sCfg = STATUS_CONFIG[issue.status] || STATUS_CONFIG.OPEN;
-  const age = Math.floor((Date.now() - new Date(issue.createdAt).getTime()) / 86400000);
+  
+  // Ticket Aging calculation
+  const createdDate = new Date(issue.createdAt);
+  const now = Date.now();
+  const ageMs = now - createdDate.getTime();
+  const ageDays = Math.floor(ageMs / 86400000);
+  const ageHours = Math.floor((ageMs % 86400000) / 3600000);
+  
+  const isOverdue = issue.dueDate && new Date(issue.dueDate) < new Date() && issue.status !== 'CLOSED' && issue.status !== 'RESOLVED';
+  
+  let ageColor = 'text-green-700 bg-green-50 border-green-200';
+  if (ageDays >= 1 && ageDays < 3) ageColor = 'text-yellow-700 bg-yellow-50 border-yellow-200';
+  else if (ageDays >= 3 && ageDays < 7) ageColor = 'text-orange-700 bg-orange-50 border-orange-200';
+  else if (ageDays >= 7) ageColor = 'text-red-700 bg-red-50 border-red-200';
+
   const images = (issue.attachments || []).filter((a: any) => a.type === 'IMAGE');
   const videos = (issue.attachments || []).filter((a: any) => a.type === 'VIDEO');
   const docs = (issue.attachments || []).filter((a: any) => a.type === 'DOCUMENT');
@@ -267,24 +450,38 @@ export default function PublicTicketView() {
           <div className="flex items-center gap-3">
             <div>
               <span className="font-black text-lg tracking-tight">SVV</span>
-              <span className="font-black text-lg text-blue-400 tracking-tight">'PAY</span>
+              <span className="font-black text-lg text-blue-400 tracking-tight">&apos;PAY</span>
             </div>
             <div className="w-px h-6 bg-white/20" />
             <div>
-              <p className="text-xs font-bold text-blue-200">Developer Issue Hub</p>
+              <p className="text-xs font-bold text-blue-200">Vendor Collaboration Hub</p>
               <p className="text-[10px] text-white/50">Track • Collaborate • Resolve</p>
             </div>
           </div>
-          <button
-            onClick={copyLink}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-          >
-            {copiedLink ? '✓ Copied!' : '🔗 Copy Link'}
-          </button>
+          <div className="flex gap-2">
+            {isAuthenticated && (
+              <div className="hidden sm:flex items-center gap-2 bg-blue-900/50 px-3 py-1 rounded-full border border-blue-800">
+                <User className="w-4 h-4 text-blue-300" />
+                <span className="text-xs font-medium text-blue-100">{vendorEmail}</span>
+              </div>
+            )}
+            <button
+              onClick={copyLink}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {copiedLink ? '✓ Copied!' : '🔗 Copy Link'}
+            </button>
+          </div>
         </div>
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        
+        {/* Render Vendor Summary if assigned */}
+        {issue.assignedTeamId && (
+          <VendorSummaryCard vendorId={issue.assignedTeamId} vendorName={issue.assignedTeam.name} />
+        )}
+
         {/* ── Ticket Header Card ── */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           {/* Priority strip */}
@@ -300,23 +497,39 @@ export default function PublicTicketView() {
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${pCfg.color}`}>
                 {pCfg.label} Priority
               </span>
-              {issue.category?.name && (
-                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
-                  {issue.category.name}
-                </span>
-              )}
+              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
+                {issue.category?.name || 'General'}
+              </span>
             </div>
 
-            {/* Title */}
+            {/* Ticket Aging row */}
+            <div className="flex flex-wrap items-center gap-2 mb-4 bg-gray-50 p-2.5 rounded-lg border border-gray-100 text-xs">
+              <div className="flex items-center gap-1.5 text-gray-600">
+                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                <span>Created: <strong>{createdDate.toLocaleDateString()}</strong></span>
+              </div>
+              <div className="w-px h-3 bg-gray-300" />
+              <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${ageColor}`}>
+                <Clock className="w-3.5 h-3.5" />
+                <span>Age: <strong>{ageDays} Days, {ageHours} Hours</strong></span>
+              </div>
+              {isOverdue && (
+                <>
+                  <div className="w-px h-3 bg-gray-300" />
+                  <div className="flex items-center gap-1 text-red-700 font-bold bg-red-100 px-2 py-0.5 rounded-full">
+                    <AlertCircle className="w-3 h-3" /> OVERDUE
+                  </div>
+                </>
+              )}
+            </div>            {/* Title */}
             <h1 className="text-xl sm:text-2xl font-black text-gray-900 leading-tight mb-4">
               {issue.title || 'Developer Issue'}
             </h1>
 
-            {/* Meta grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <MetaCell icon={<User className="w-4 h-4 text-blue-500" />} label="Assigned To" value={issue.assignedTeam?.name || 'SVV Dev Team'} />
-              <MetaCell icon={<Clock className="w-4 h-4 text-orange-500" />} label="Created" value={fmtDateShort(issue.createdAt)} />
-              <MetaCell icon={<Tag className="w-4 h-4 text-purple-500" />} label="Age" value={`${age} day${age !== 1 ? 's' : ''}`} />
+              <MetaCell icon={<Clock className="w-4 h-4 text-orange-500" />} label="Created" value={createdDate.toLocaleDateString()} />
+              <MetaCell icon={<Tag className="w-4 h-4 text-purple-500" />} label="Age" value={`${ageDays} day${ageDays !== 1 ? 's' : ''}`} />
               <MetaCell icon={<MessageSquare className="w-4 h-4 text-green-500" />} label="Activity" value={`${issue.timeline?.length || 0} entries`} />
             </div>
           </div>
@@ -418,6 +631,11 @@ export default function PublicTicketView() {
               <p className="text-sm text-gray-400">No activity yet</p>
             </div>
           )}
+
+          {/* Interactive Reply for Vendor */}
+          {isAuthenticated && (
+            <VendorCommentComposer issueId={issue.id} vendorName={issue.assignedTeam?.name || 'Vendor'} onSuccess={refetch} />
+          )}
         </div>
 
         {/* ── Share Link ── */}
@@ -438,7 +656,7 @@ export default function PublicTicketView() {
         {/* ── Footer ── */}
         <div className="text-center py-4">
           <p className="text-xs text-gray-400">
-            SVV'PAY — Developer Issue Hub &nbsp;•&nbsp; svvdigitalhub-svv.vercel.app
+            SVV&apos;PAY — Developer Issue Hub &nbsp;•&nbsp; svvdigitalhub-svv.vercel.app
           </p>
         </div>
       </div>

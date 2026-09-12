@@ -19,13 +19,16 @@ export const STATUS_LABELS: Record<string, string> = {
   OPEN: 'Open',
   ASSIGNED: 'Assigned',
   IN_PROGRESS: 'In Progress',
+  WAITING_VENDOR: 'Waiting Vendor',
+  WAITING_CUSTOMER: 'Waiting Customer',
+  RESOLVED: 'Resolved',
+  REOPENED: 'Reopened',
+  CLOSED: 'Closed',
+  // Legacy statuses (kept for backward compat)
   DEV_COMPLETED: 'Dev Completed',
   TESTING: 'Testing',
   TEST_FAILED: 'Test Failed',
-  REOPENED: 'Reopened',
   READY_FOR_DEPLOY: 'Ready for Deployment',
-  CLOSED: 'Closed',
-  // Legacy statuses (kept for backward compat)
   NEED_INFO: 'Need Info',
   COMPLETED_BY_DEV: 'Dev Completed',
   VERIFIED_BY_SVV: 'Verified by SVV',
@@ -33,26 +36,30 @@ export const STATUS_LABELS: Record<string, string> = {
 
 export const STATUS_TIMELINE_ACTION: Record<string, string> = {
   OPEN: 'Ticket Opened',
-  ASSIGNED: 'Assigned to Developer',
-  IN_PROGRESS: 'Developer Started Work',
+  ASSIGNED: 'Assigned to Vendor',
+  IN_PROGRESS: 'Vendor Started Work',
+  WAITING_VENDOR: 'Waiting for Vendor Response',
+  WAITING_CUSTOMER: 'Waiting for Customer Feedback',
+  RESOLVED: 'Issue Resolved',
+  REOPENED: 'Issue Reopened',
+  CLOSED: 'Ticket Closed',
+  // Legacy
   DEV_COMPLETED: 'Development Completed',
   TESTING: 'Testing Started',
-  TEST_FAILED: 'Test Failed — Reopened for Fix',
-  REOPENED: 'Issue Reopened',
+  TEST_FAILED: 'Test Failed — Reopened',
   READY_FOR_DEPLOY: 'Ready for Deployment',
-  CLOSED: 'Ticket Closed',
   NEED_INFO: 'More Info Requested',
   COMPLETED_BY_DEV: 'Development Completed',
   VERIFIED_BY_SVV: 'Verified by SVV Team',
 };
 
 // Admin-only statuses (only admin can set these)
-export const ADMIN_ONLY_STATUSES = ['CLOSED', 'REOPENED'];
+export const ADMIN_ONLY_STATUSES = ['CLOSED', 'REOPENED', 'RESOLVED'];
 
 // All allowed status transitions in order
 export const ALL_STATUSES = [
-  'OPEN', 'ASSIGNED', 'IN_PROGRESS', 'DEV_COMPLETED',
-  'TESTING', 'TEST_FAILED', 'REOPENED', 'READY_FOR_DEPLOY', 'CLOSED'
+  'OPEN', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_VENDOR',
+  'WAITING_CUSTOMER', 'RESOLVED', 'REOPENED', 'CLOSED'
 ];
 
 // ─── Upload attachment to Supabase storage ────────────────────
@@ -312,12 +319,12 @@ export function useDeleteDevIssue() {
   });
 }
 
-// ─── ADD COMMENT (admin, with optional attachment URLs)
+// ─── ADD COMMENT (admin or vendor, with optional attachment URLs)
 export function useAddDevIssueComment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, comment, attachmentFiles }: {
-      id: string; comment: string; attachmentFiles?: File[];
+    mutationFn: async ({ id, comment, attachmentFiles, authorType = 'SVV_ADMIN', authorName = 'SVV Admin' }: {
+      id: string; comment: string; attachmentFiles?: File[]; authorType?: string; authorName?: string;
     }) => {
       const nowIso = new Date().toISOString();
 
@@ -344,9 +351,9 @@ export function useAddDevIssueComment() {
 
       const { data, error } = await supabase.from('DevIssueTimeline').insert([{
         id: generateUUID(), issueId: id,
-        action: 'Comment Added',
+        action: authorType === 'VENDOR' ? 'Vendor Comment' : 'Admin Comment',
         comment: fullComment,
-        authorType: 'SVV_ADMIN', authorName: 'SVV Admin', createdAt: nowIso,
+        authorType, authorName, createdAt: nowIso,
       }]).select().single();
 
       if (error) throw new Error(error.message);
@@ -402,6 +409,23 @@ export function useDevIssueDetails(id: string) {
       return { ...issue, timeline: timeline || [], attachments: attachments || [] };
     },
     enabled: !!id
+  });
+}
+
+// ─── GET VENDOR TICKETS (for summary card)
+export function useVendorTickets(vendorId?: string) {
+  return useQuery({
+    queryKey: ['vendor-tickets', vendorId],
+    queryFn: async () => {
+      if (!vendorId) return [];
+      const { data, error } = await supabase
+        .from('DevIssue')
+        .select('*')
+        .eq('assignedTeamId', vendorId);
+      if (error) { console.warn(error); return []; }
+      return data || [];
+    },
+    enabled: !!vendorId
   });
 }
 
