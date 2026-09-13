@@ -44,6 +44,18 @@ export default function DevPortalLayout() {
   const authorizedEmailsStr = data.team?.contactEmail || '';
   const authorizedEmails = authorizedEmailsStr.split(',').map((e: string) => e.trim().toLowerCase());
 
+  React.useEffect(() => {
+    const storedEmail = localStorage.getItem('vendor_auth_email');
+    if (storedEmail) {
+      if (authorizedEmails.includes(storedEmail.toLowerCase())) {
+        setIsAuthenticated(true);
+        setVendorEmail(storedEmail.toLowerCase());
+      } else {
+        localStorage.removeItem('vendor_auth_email');
+      }
+    }
+  }, [authorizedEmailsStr]);
+
   const handleGoogleSuccess = (credentialResponse: any) => {
     try {
       const decoded: any = jwtDecode(credentialResponse.credential);
@@ -53,12 +65,19 @@ export default function DevPortalLayout() {
         setIsAuthenticated(true);
         setVendorEmail(email);
         setAuthError(null);
+        localStorage.setItem('vendor_auth_email', email);
       } else {
         setAuthError(`Email ${email} is not authorized for ${teamName}.`);
       }
     } catch (err) {
       setAuthError("Failed to decode login response.");
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('vendor_auth_email');
+    setIsAuthenticated(false);
+    setVendorEmail(null);
   };
 
   // Auth Gateway
@@ -128,6 +147,9 @@ export default function DevPortalLayout() {
               <div className="text-[9px] text-blue-300 flex items-center justify-end gap-1">
                 <User className="w-2.5 h-2.5" /> {vendorEmail}
               </div>
+              <button onClick={handleLogout} className="text-[9px] text-red-300 hover:text-red-200 underline mt-0.5">
+                Logout
+              </button>
             </div>
           </div>
         </div>

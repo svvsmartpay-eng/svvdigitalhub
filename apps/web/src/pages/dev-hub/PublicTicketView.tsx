@@ -330,6 +330,23 @@ export default function PublicTicketView() {
   const [vendorEmail, setVendorEmail] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   
+  React.useEffect(() => {
+    if (issue?.assignedTeamId) {
+      const storedEmail = localStorage.getItem('vendor_auth_email');
+      if (storedEmail) {
+        const vendorEmailsStr = issue.assignedTeam?.contactEmail || '';
+        const authorizedEmails = vendorEmailsStr.split(',').map((e: string) => e.trim().toLowerCase());
+        
+        if (authorizedEmails.includes(storedEmail.toLowerCase())) {
+          setIsAuthenticated(true);
+          setVendorEmail(storedEmail.toLowerCase());
+        } else {
+          localStorage.removeItem('vendor_auth_email');
+        }
+      }
+    }
+  }, [issue]);
+
   const [copiedLink, setCopiedLink] = useState(false);
   const publicUrl = `${window.location.origin}/public/ticket/${id}`;
 
@@ -351,12 +368,19 @@ export default function PublicTicketView() {
         setIsAuthenticated(true);
         setVendorEmail(email);
         setAuthError(null);
+        localStorage.setItem('vendor_auth_email', email.toLowerCase());
       } else {
         setAuthError(`Email ${email} is not authorized for this vendor. Please ask the Admin to add it.`);
       }
     } catch (err) {
       setAuthError("Failed to decode Google token.");
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('vendor_auth_email');
+    setIsAuthenticated(false);
+    setVendorEmail(null);
   };
 
   // ── Loading state
@@ -463,6 +487,7 @@ export default function PublicTicketView() {
               <div className="hidden sm:flex items-center gap-2 bg-blue-900/50 px-3 py-1 rounded-full border border-blue-800">
                 <User className="w-4 h-4 text-blue-300" />
                 <span className="text-xs font-medium text-blue-100">{vendorEmail}</span>
+                <button onClick={handleLogout} className="ml-1 text-[10px] text-red-300 hover:text-red-200 underline">Logout</button>
               </div>
             )}
             <button
