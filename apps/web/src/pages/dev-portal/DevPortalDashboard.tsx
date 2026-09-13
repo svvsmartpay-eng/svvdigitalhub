@@ -56,15 +56,15 @@ export default function DevPortalDashboard() {
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border p-4 text-center shadow-sm">
           <div className="text-2xl font-black text-[#081B3A]">{stats.total}</div>
-          <div className="text-xs text-gray-500 font-medium mt-0.5">Total Tickets</div>
+          <div className="text-[11px] text-gray-500 font-bold uppercase mt-1 tracking-wide">Total</div>
         </div>
-        <div className="bg-[#EFF6FF] rounded-xl border border-blue-200 p-4 text-center shadow-sm">
-          <div className="text-2xl font-black text-blue-600">{issues?.filter((i: any) => ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'NEED_INFO'].includes(i.status)).length || 0}</div>
-          <div className="text-xs text-blue-600 font-medium mt-0.5">Open</div>
+        <div className="bg-[#FFF8E6] rounded-xl border border-yellow-200 p-4 text-center shadow-sm">
+          <div className="text-2xl font-black text-yellow-600">{stats.pending}</div>
+          <div className="text-[11px] text-yellow-700 font-bold uppercase mt-1 tracking-wide">Pending</div>
         </div>
-        <div className="bg-[#F0FDF4] rounded-xl border border-green-200 p-4 text-center shadow-sm">
-          <div className="text-2xl font-black text-green-600">{stats.completed}</div>
-          <div className="text-xs text-green-600 font-medium mt-0.5">Completed</div>
+        <div className="bg-[#FEF2F2] rounded-xl border border-red-200 p-4 text-center shadow-sm">
+          <div className="text-2xl font-black text-red-600">{stats.overdue}</div>
+          <div className="text-[11px] text-red-700 font-bold uppercase mt-1 tracking-wide">Overdue</div>
         </div>
       </div>
 
