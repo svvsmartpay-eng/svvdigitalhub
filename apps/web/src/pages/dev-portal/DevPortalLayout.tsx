@@ -16,6 +16,23 @@ export default function DevPortalLayout() {
   const [vendorEmail, setVendorEmail] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const teamName = data?.team?.name || 'Developer Team';
+  const authorizedEmailsStr = data?.team?.contactEmail || '';
+  const authorizedEmails = authorizedEmailsStr.split(',').map((e: string) => e.trim().toLowerCase());
+
+  React.useEffect(() => {
+    if (!data) return;
+    const storedEmail = localStorage.getItem('vendor_auth_email');
+    if (storedEmail) {
+      if (authorizedEmails.includes(storedEmail.toLowerCase())) {
+        setIsAuthenticated(true);
+        setVendorEmail(storedEmail.toLowerCase());
+      } else {
+        localStorage.removeItem('vendor_auth_email');
+      }
+    }
+  }, [data, authorizedEmailsStr]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-3">
@@ -39,22 +56,6 @@ export default function DevPortalLayout() {
       </div>
     );
   }
-
-  const teamName = data.team?.name || 'Developer Team';
-  const authorizedEmailsStr = data.team?.contactEmail || '';
-  const authorizedEmails = authorizedEmailsStr.split(',').map((e: string) => e.trim().toLowerCase());
-
-  React.useEffect(() => {
-    const storedEmail = localStorage.getItem('vendor_auth_email');
-    if (storedEmail) {
-      if (authorizedEmails.includes(storedEmail.toLowerCase())) {
-        setIsAuthenticated(true);
-        setVendorEmail(storedEmail.toLowerCase());
-      } else {
-        localStorage.removeItem('vendor_auth_email');
-      }
-    }
-  }, [authorizedEmailsStr]);
 
   const handleGoogleSuccess = (credentialResponse: any) => {
     try {
