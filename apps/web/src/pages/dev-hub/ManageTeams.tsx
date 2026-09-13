@@ -56,6 +56,12 @@ export default function ManageTeams() {
     }
   };
 
+  const copyLink = (token: string) => {
+    const url = `${window.location.origin}/dev-portal/${token}`;
+    navigator.clipboard.writeText(url);
+    alert('Vendor Dashboard Link copied to clipboard!');
+  };
+
   const handleEditClick = (t: any) => {
     setEditingId(t.id);
     setEditForm({
@@ -172,6 +178,9 @@ export default function ManageTeams() {
                       </div>
                     </div>
                     <div className="flex flex-row md:flex-col gap-2 shrink-0">
+                      <Button variant="outline" size="sm" className="text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => copyLink(t.publicToken)}>
+                        <ExternalLink className="w-4 h-4 mr-1.5" /> Share Dashboard
+                      </Button>
                       <Button variant="outline" size="sm" onClick={() => handleEditClick(t)}>
                         <Edit2 className="w-4 h-4 mr-1.5" /> Edit
                       </Button>
