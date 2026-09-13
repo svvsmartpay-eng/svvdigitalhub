@@ -157,44 +157,9 @@ export default function DevPortalLayout() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto px-4 py-4 pb-24">
+      <main className="flex-1 overflow-y-auto px-4 py-4">
         <Outlet context={{ token, teamName, stats, issues, vendorEmail }} />
       </main>
-
-      {/* Bottom Navigation */}
-      {!isDetailPage && (
-        <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t shadow-lg z-10">
-          <div className="grid grid-cols-5 h-16">
-            {[
-              { icon: LayoutDashboard, label: 'Dashboard', path: `/dev-portal/${token}` },
-              { icon: Ticket, label: 'Tickets', path: `/dev-portal/${token}` },
-              { icon: Plus, label: 'Create', path: '#', highlight: true },
-              { icon: BarChart3, label: 'Reports', path: '#' },
-              { icon: MoreHorizontal, label: 'More', path: '#' },
-            ].map(({ icon: Icon, label, path, highlight }) => {
-              const isActive = location.pathname === path && path !== '#';
-              return (
-                <button
-                  key={label}
-                  onClick={() => path !== '#' && navigate(path)}
-                  className={`flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                    highlight ? 'text-blue-600' : isActive ? 'text-[#081B3A]' : 'text-gray-400'
-                  }`}
-                >
-                  {highlight ? (
-                    <div className="w-10 h-10 bg-[#0D6EFD] rounded-full flex items-center justify-center -mt-4 shadow-lg">
-                      <Icon className="w-5 h-5 text-white" />
-                    </div>
-                  ) : (
-                    <Icon className="w-5 h-5" />
-                  )}
-                  <span className="text-[10px] font-medium">{label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </nav>
-      )}
     </div>
   );
 }
