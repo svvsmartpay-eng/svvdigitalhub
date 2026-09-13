@@ -135,7 +135,7 @@ export default function DevPortalLayout() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-4 py-4 pb-24">
-        <Outlet context={{ token, teamName, stats, issues }} />
+        <Outlet context={{ token, teamName, stats, issues, vendorEmail }} />
       </main>
 
       {/* Bottom Navigation */}

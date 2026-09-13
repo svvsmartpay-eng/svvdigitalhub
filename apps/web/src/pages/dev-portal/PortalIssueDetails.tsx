@@ -20,7 +20,7 @@ function getStatusColor(status: string) {
 }
 
 // ===== Developer Update Modal (Step 6) =====
-function AddUpdateModal({ issue, token, onClose, onSuccess }: any) {
+function AddUpdateModal({ issue, token, vendorEmail, onClose, onSuccess }: any) {
   const [form, setForm] = useState({
     status: issue.status === 'OPEN' ? 'IN_PROGRESS' : issue.status,
     comment: '',
@@ -49,13 +49,14 @@ function AddUpdateModal({ issue, token, onClose, onSuccess }: any) {
             rootCause: form.rootCause,
             fixDetails: form.fixDetails,
             deploymentDetails: form.deploymentDetails,
+            authorName: vendorEmail,
           }
         });
       } else {
         await updateStatus.mutateAsync({
           id: issue.id,
           token,
-          data: { status: form.status, comment: form.comment }
+          data: { status: form.status, comment: form.comment, authorName: vendorEmail }
         });
       }
       onSuccess();
@@ -318,10 +319,10 @@ function TicketClosedScreen({ issue }: { issue: any }) {
 // ===== Main Portal Issue Details Page (Steps 5-8) =====
 export default function PortalIssueDetails() {
   const { id } = useParams<{ id: string }>();
-  const { token, issues: allIssues } = useOutletContext<any>();
+  const { token, issues: allIssues, vendorEmail } = useOutletContext<any>();
   const { data: issue, isLoading, refetch } = useDevIssueDetails(id as string);
 
-  const [activeTab, setActiveTab] = useState<'details' | 'activity' | 'attachments'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'activity' | 'attachments'>('activity');
   const [imgIndex, setImgIndex] = useState(0);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
@@ -530,7 +531,11 @@ export default function PortalIssueDetails() {
                     <span className="text-xs text-gray-400">{new Date(t.createdAt).toLocaleDateString('en-IN')}</span>
                   </div>
                   <p className="text-xs font-semibold text-blue-600 mt-0.5">{t.action}</p>
-                  {t.comment && <p className="text-xs text-gray-600 mt-1">{t.comment}</p>}
+                  {t.comment && (
+                    <div className="mt-2 text-xs text-gray-700 bg-gray-50/50 rounded-lg p-2.5 border">
+                      <RichTextView html={t.comment} />
+                    </div>
+                  )}
                   {t.rootCause && (
                     <div className="mt-2 bg-gray-50 rounded p-2 text-xs space-y-1">
                       <p><strong>Root Cause:</strong> {t.rootCause}</p>
@@ -578,6 +583,7 @@ export default function PortalIssueDetails() {
         <AddUpdateModal
           issue={issue}
           token={token}
+          vendorEmail={vendorEmail}
           onClose={() => setShowUpdateModal(false)}
           onSuccess={() => { setShowUpdateModal(false); refetch(); }}
         />
